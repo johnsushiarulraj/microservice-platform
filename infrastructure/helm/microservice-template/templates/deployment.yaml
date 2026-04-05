@@ -1,0 +1,46 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "microservice-template.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app: {{ include "microservice-template.fullname" . }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      app: {{ include "microservice-template.fullname" . }}
+  template:
+    metadata:
+      labels:
+        app: {{ include "microservice-template.fullname" . }}
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/path: "/template/actuator/prometheus"
+        prometheus.io/port: "8080"
+    spec:
+      containers:
+        - name: {{ .Chart.Name }}
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - containerPort: 8080
+          envFrom:
+            - configMapRef:
+                name: {{ include "microservice-template.fullname" . }}-config
+            - secretRef:
+                name: {{ include "microservice-template.fullname" . }}-secret
+          readinessProbe:
+            httpGet:
+              path: /template/actuator/health
+              port: 8080
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /template/actuator/health
+              port: 8080
+            initialDelaySeconds: 60
+            periodSeconds: 30
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}

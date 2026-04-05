@@ -1,0 +1,52 @@
+spring:
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: http://keycloak.payments.svc.cluster.local:8080/realms/template
+          jwk-set-uri: http://keycloak.payments.svc.cluster.local:8080/realms/template/protocol/openid-connect/certs
+      client:
+        registration:
+          keycloak:
+            provider: keycloak
+            client-id: microservice-template
+            client-secret: template-secret
+            authorization-grant-type: client_credentials
+            scope: openid
+        provider:
+          keycloak:
+            issuer-uri: http://keycloak.payments.svc.cluster.local:8080/realms/template
+  cloud:
+    gateway:
+      routes:
+        # All /template/** traffic → microservice-template
+        # TokenRelay= forwards the caller's JWT to the downstream service
+        - id: microservice-template
+          uri: http://microservice-template.payments.svc.cluster.local:8080
+          predicates:
+            - Path=/template/**
+          filters:
+            - TokenRelay=
+            - name: CircuitBreaker
+              args:
+                name: template-cb
+                fallbackUri: forward:/fallback/template
+            - name: Retry
+              args:
+                retries: 3
+                statuses: BAD_GATEWAY,SERVICE_UNAVAILABLE,GATEWAY_TIMEOUT
+                methods: GET
+                backoff:
+                  firstBackoff: 100ms
+                  maxBackoff: 500ms
+                  factor: 2
+                  basedOnPreviousValue: false
+
+    loadbalancer:
+      ribbon:
+        enabled: false
+
+logging:
+  level:
+    com.example.gateway: DEBUG
+    org.springframework.cloud.gateway: DEBUG

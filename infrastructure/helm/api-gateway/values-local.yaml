@@ -1,0 +1,9 @@
+replicaCount: 1
+
+image:
+  repository: api-gateway
+  tag: local
+  pullPolicy: Never
+
+autoscaling:
+  enabled: false

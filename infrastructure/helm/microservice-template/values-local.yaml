@@ -1,0 +1,17 @@
+replicaCount: 1
+
+image:
+  repository: microservice-template
+  tag: local
+  pullPolicy: Never
+
+autoscaling:
+  enabled: false
+
+resources:
+  requests:
+    memory: "256Mi"
+    cpu: "250m"
+  limits:
+    memory: "512Mi"
+    cpu: "500m"
