@@ -3,7 +3,8 @@ spring:
     oauth2:
       resourceserver:
         jwt:
-          issuer-uri: http://keycloak.payments.svc.cluster.local:8080/realms/template
+          # Use jwk-set-uri only (no issuer validation) so tokens from both
+          # localhost and platform.javabackend.com are accepted
           jwk-set-uri: http://keycloak.payments.svc.cluster.local:8080/realms/template/protocol/openid-connect/certs
       client:
         registration:

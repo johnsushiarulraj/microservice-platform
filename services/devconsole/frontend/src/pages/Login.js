@@ -104,12 +104,18 @@ export default function Login() {
 
         {/* Footer links */}
         <div className="mt-6 text-center space-y-2">
-          <a href="/devconsole/learn/getting-started" className="block text-sm text-slate-500 hover:text-slate-700 transition-colors">
-            Browse Documentation
+          <a href="/devconsole/create" className="block text-sm text-blue-600 hover:text-blue-800 font-medium transition-colors">
+            Continue without signing in
           </a>
-          <a href="/devconsole/create" className="block text-sm text-slate-500 hover:text-slate-700 transition-colors">
-            Create a Microservice
-          </a>
+          <div className="flex items-center gap-3 pt-2">
+            <a href="/devconsole/learn/getting-started" className="text-xs text-slate-400 hover:text-slate-600 transition-colors">
+              Documentation
+            </a>
+            <span className="text-xs text-slate-300">|</span>
+            <a href="/devconsole/create" className="text-xs text-slate-400 hover:text-slate-600 transition-colors">
+              Create Service
+            </a>
+          </div>
         </div>
       </div>
     </div>
