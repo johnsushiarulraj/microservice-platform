@@ -14,12 +14,12 @@ import ChangePassword from './pages/ChangePassword';
 const API_BASE = '/devconsole';
 
 const PUBLIC_NAV = [
-  { path: '/', label: 'Dashboard', icon: 'home' },
   { path: '/create', label: 'Create Service', icon: 'plus' },
   { path: '/learn', label: 'Learn', icon: 'book' },
 ];
 
 const PROTECTED_NAV = [
+  { path: '/', label: 'Dashboard', icon: 'home' },
   { path: '/services', label: 'Services', icon: 'server' },
   { path: '/data/sqs', label: 'SQS Queues', icon: 'queue' },
   { path: '/data/s3', label: 'S3 Storage', icon: 'folder' },
@@ -146,11 +146,11 @@ function AppLayout() {
       <main className="flex-1 p-8 overflow-auto">
         <Routes>
           {/* Public routes */}
-          <Route path="/" element={<Dashboard apiBase={API_BASE} />} />
           <Route path="/create" element={<CreateService apiBase={API_BASE} />} />
           <Route path="/learn/*" element={<Learn />} />
 
           {/* Protected routes */}
+          <Route path="/" element={<RequireAuth><Dashboard apiBase={API_BASE} /></RequireAuth>} />
           <Route path="/services" element={<RequireAuth><Services apiBase={API_BASE} /></RequireAuth>} />
           <Route path="/data/sqs" element={<RequireAuth><SqsManager apiBase={API_BASE} /></RequireAuth>} />
           <Route path="/data/s3" element={<RequireAuth><S3Manager apiBase={API_BASE} /></RequireAuth>} />

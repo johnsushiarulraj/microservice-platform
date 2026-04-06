@@ -3,7 +3,7 @@ import { useAuth } from '../auth';
 import { PageHeader, Card, Button, Alert } from '../components/ui';
 
 export default function ChangePassword() {
-  const { user } = useAuth();
+  const { user, authFetch } = useAuth();
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -25,8 +25,8 @@ export default function ChangePassword() {
 
     setLoading(true);
     try {
-      // Verify current password by getting a token
-      const tokenRes = await fetch('/auth/realms/template/protocol/openid-connect/token', {
+      // Verify current password by attempting to get a token
+      const verifyRes = await fetch('/auth/realms/template/protocol/openid-connect/token', {
         method: 'POST',
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
         body: new URLSearchParams({
@@ -37,35 +37,30 @@ export default function ChangePassword() {
           password: currentPassword,
         }),
       });
-      if (!tokenRes.ok) {
+      if (!verifyRes.ok) {
         setAlert({ type: 'error', msg: 'Current password is incorrect' });
         setLoading(false);
         return;
       }
 
-      // Use the Keycloak account API to change password
-      const tokenData = await tokenRes.json();
-      const res = await fetch('/auth/realms/template/account/credentials/password', {
+      // Change password via DevConsole backend API (which calls Keycloak Admin API)
+      const res = await authFetch('/devconsole/api/keycloak/change-password', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${tokenData.access_token}`,
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          currentPassword,
-          newPassword,
-          confirmation: newPassword,
+          username: user.username,
+          newPassword: newPassword,
         }),
       });
 
-      if (res.ok || res.status === 204) {
+      if (res.ok) {
         setAlert({ type: 'success', msg: 'Password changed successfully. Use your new password next time you sign in.' });
         setCurrentPassword('');
         setNewPassword('');
         setConfirmPassword('');
       } else {
         const err = await res.json().catch(() => ({}));
-        setAlert({ type: 'error', msg: err.errorMessage || 'Failed to change password' });
+        setAlert({ type: 'error', msg: err.message || 'Failed to change password' });
       }
     } catch (err) {
       setAlert({ type: 'error', msg: err.message });

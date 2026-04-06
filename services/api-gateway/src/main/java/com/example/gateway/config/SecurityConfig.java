@@ -23,13 +23,13 @@ public class SecurityConfig {
                 // Keycloak auth endpoints (must be public to get tokens)
                 .pathMatchers("/auth/**").permitAll()
 
-                // DevConsole: login page, static assets, learn section, create service, dashboard
-                .pathMatchers("/devconsole/login").permitAll()
-                .pathMatchers("/devconsole/static/**").permitAll()
+                // DevConsole: SPA shell + static assets must be public (React handles auth internally)
+                .pathMatchers("/devconsole/").permitAll()
                 .pathMatchers("/devconsole/index.html").permitAll()
+                .pathMatchers("/devconsole/static/**").permitAll()
                 .pathMatchers("/devconsole/favicon.ico").permitAll()
                 .pathMatchers("/devconsole/manifest.json").permitAll()
-                .pathMatchers("/devconsole/").permitAll()
+                .pathMatchers("/devconsole/login").permitAll()
                 .pathMatchers("/devconsole/learn/**").permitAll()
                 .pathMatchers("/devconsole/create").permitAll()
                 .pathMatchers("/devconsole/actuator/**").permitAll()
@@ -37,6 +37,7 @@ public class SecurityConfig {
                 // DevConsole API: health is public, scaffold (create service) is public
                 .pathMatchers("/devconsole/api/health").permitAll()
                 .pathMatchers("/devconsole/api/scaffold").permitAll()
+                .pathMatchers("/devconsole/api/setup/google-sso").permitAll()
 
                 // ── PROTECTED: JWT required ──────────────────────────────
                 .anyExchange().authenticated()
