@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useAuth } from '../auth';
 
 const STATUS_CONFIG = {
   UP: { bg: 'bg-emerald-50', border: 'border-emerald-200', dot: 'bg-emerald-500', text: 'text-emerald-700', ring: 'ring-emerald-500/20' },
@@ -30,6 +31,7 @@ function LoadingSpinner() {
 }
 
 export default function Dashboard({ apiBase }) {
+  const { authFetch } = useAuth();
   const [health, setHealth] = useState({});
   const [services, setServices] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -37,7 +39,7 @@ export default function Dashboard({ apiBase }) {
   useEffect(() => {
     Promise.all([
       fetch(`${apiBase}/api/health`).then(r => r.ok ? r.json() : ({})).catch(() => ({})),
-      fetch(`${apiBase}/api/services`).then(r => r.ok ? r.json() : []).catch(() => []),
+      authFetch(`${apiBase}/api/services`).then(r => r.ok ? r.json() : []).catch(() => []),
     ]).then(([h, s]) => {
       setHealth(h);
       setServices(s);

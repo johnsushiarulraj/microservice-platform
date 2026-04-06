@@ -1,3 +1,4 @@
+import { useAuth } from '../auth';
 import React, { useState, useEffect, useRef } from 'react';
 import { PageHeader, Card, CardHeader, Button, Input, Badge, Table, Alert, Spinner, EmptyState, Icon } from '../components/ui';
 
@@ -9,6 +10,7 @@ function formatSize(bytes) {
 }
 
 export default function S3Manager({ apiBase }) {
+  const { authFetch } = useAuth();
   const [buckets, setBuckets] = useState([]);
   const [loading, setLoading] = useState(true);
   const [newBucket, setNewBucket] = useState('');
@@ -21,20 +23,20 @@ export default function S3Manager({ apiBase }) {
 
   const loadBuckets = () => {
     setLoading(true);
-    fetch(`${apiBase}/api/s3/buckets`).then(r => r.json()).then(b => { setBuckets(b); setLoading(false); }).catch(() => setLoading(false));
+    authFetch(`${apiBase}/api/s3/buckets`).then(r => r.ok ? r.json() : []).then(b => { setBuckets(b); setLoading(false); }).catch(() => setLoading(false));
   };
   useEffect(() => { loadBuckets(); }, [apiBase]);
 
   const loadObjects = (bucket) => {
     setObjLoading(true);
-    fetch(`${apiBase}/api/s3/buckets/${bucket}/objects`).then(r => r.json()).then(o => { setObjects(o); setObjLoading(false); }).catch(() => setObjLoading(false));
+    authFetch(`${apiBase}/api/s3/buckets/${bucket}/objects`).then(r => r.json()).then(o => { setObjects(o); setObjLoading(false); }).catch(() => setObjLoading(false));
   };
 
   const selectBucket = (name) => { setSelected(name); loadObjects(name); };
 
   const createBucket = async () => {
     if (!newBucket.trim()) return;
-    await fetch(`${apiBase}/api/s3/buckets`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: newBucket }) });
+    await authFetch(`${apiBase}/api/s3/buckets`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: newBucket }) });
     setAlert({ type: 'success', msg: `Bucket "${newBucket}" created` });
     setNewBucket('');
     loadBuckets();
@@ -42,7 +44,7 @@ export default function S3Manager({ apiBase }) {
 
   const deleteBucket = async (name) => {
     if (!window.confirm(`Delete bucket "${name}"? It must be empty.`)) return;
-    await fetch(`${apiBase}/api/s3/buckets/${name}`, { method: 'DELETE' });
+    await authFetch(`${apiBase}/api/s3/buckets/${name}`, { method: 'DELETE' });
     if (selected === name) { setSelected(null); setObjects([]); }
     setAlert({ type: 'success', msg: `Bucket "${name}" deleted` });
     loadBuckets();
@@ -54,7 +56,7 @@ export default function S3Manager({ apiBase }) {
     setUploading(true);
     const formData = new FormData();
     formData.append('file', file);
-    await fetch(`${apiBase}/api/s3/buckets/${selected}/objects?key=${encodeURIComponent(file.name)}`, { method: 'POST', body: formData });
+    await authFetch(`${apiBase}/api/s3/buckets/${selected}/objects?key=${encodeURIComponent(file.name)}`, { method: 'POST', body: formData });
     setAlert({ type: 'success', msg: `Uploaded "${file.name}"` });
     fileRef.current.value = '';
     setUploading(false);
@@ -63,7 +65,7 @@ export default function S3Manager({ apiBase }) {
 
   const deleteObject = async (key) => {
     if (!window.confirm(`Delete "${key}"?`)) return;
-    await fetch(`${apiBase}/api/s3/buckets/${selected}/objects/${encodeURIComponent(key)}`, { method: 'DELETE' });
+    await authFetch(`${apiBase}/api/s3/buckets/${selected}/objects/${encodeURIComponent(key)}`, { method: 'DELETE' });
     setAlert({ type: 'success', msg: `Deleted "${key}"` });
     loadObjects(selected);
   };

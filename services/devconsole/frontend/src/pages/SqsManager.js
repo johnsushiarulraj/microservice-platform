@@ -1,7 +1,9 @@
+import { useAuth } from '../auth';
 import React, { useState, useEffect } from 'react';
 import { PageHeader, Card, CardHeader, Button, Input, Badge, Alert, Spinner, EmptyState, Icon } from '../components/ui';
 
 export default function SqsManager({ apiBase }) {
+  const { authFetch } = useAuth();
   const [queues, setQueues] = useState([]);
   const [loading, setLoading] = useState(true);
   const [newQueue, setNewQueue] = useState('');
@@ -12,13 +14,13 @@ export default function SqsManager({ apiBase }) {
 
   const load = () => {
     setLoading(true);
-    fetch(`${apiBase}/api/sqs/queues`).then(r => r.json()).then(q => { setQueues(q); setLoading(false); }).catch(() => setLoading(false));
+    authFetch(`${apiBase}/api/sqs/queues`).then(r => r.ok ? r.json() : []).then(q => { setQueues(q); setLoading(false); }).catch(() => setLoading(false));
   };
   useEffect(() => { load(); }, [apiBase]);
 
   const create = async () => {
     if (!newQueue.trim()) return;
-    await fetch(`${apiBase}/api/sqs/queues`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: newQueue }) });
+    await authFetch(`${apiBase}/api/sqs/queues`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: newQueue }) });
     setAlert({ type: 'success', msg: `Queue "${newQueue}" created` });
     setNewQueue('');
     load();
@@ -26,7 +28,7 @@ export default function SqsManager({ apiBase }) {
 
   const remove = async (name) => {
     if (!window.confirm(`Delete queue "${name}"?`)) return;
-    await fetch(`${apiBase}/api/sqs/queues/${name}`, { method: 'DELETE' });
+    await authFetch(`${apiBase}/api/sqs/queues/${name}`, { method: 'DELETE' });
     if (selected === name) { setSelected(null); setMessages([]); }
     setAlert({ type: 'success', msg: `Queue "${name}" deleted` });
     load();
@@ -34,7 +36,7 @@ export default function SqsManager({ apiBase }) {
 
   const send = async () => {
     if (!selected || !msgBody.trim()) return;
-    const res = await fetch(`${apiBase}/api/sqs/queues/${selected}/send`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ body: msgBody }) });
+    const res = await authFetch(`${apiBase}/api/sqs/queues/${selected}/send`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ body: msgBody }) });
     const data = await res.json();
     setAlert({ type: 'success', msg: `Message sent (${data.messageId?.slice(0, 8)}...)` });
     load();
@@ -42,7 +44,7 @@ export default function SqsManager({ apiBase }) {
 
   const receive = async () => {
     if (!selected) return;
-    const res = await fetch(`${apiBase}/api/sqs/queues/${selected}/receive?maxMessages=10`);
+    const res = await authFetch(`${apiBase}/api/sqs/queues/${selected}/receive?maxMessages=10`);
     const data = await res.json();
     setMessages(data);
     setAlert({ type: 'info', msg: `Received ${data.length} message(s)` });
@@ -50,7 +52,7 @@ export default function SqsManager({ apiBase }) {
 
   const purge = async () => {
     if (!selected || !window.confirm(`Purge all messages from "${selected}"?`)) return;
-    await fetch(`${apiBase}/api/sqs/queues/${selected}/purge`, { method: 'POST' });
+    await authFetch(`${apiBase}/api/sqs/queues/${selected}/purge`, { method: 'POST' });
     setMessages([]);
     setAlert({ type: 'success', msg: `Queue "${selected}" purged` });
     load();

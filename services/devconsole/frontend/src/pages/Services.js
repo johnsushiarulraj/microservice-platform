@@ -1,7 +1,9 @@
 import React, { useState, useEffect } from 'react';
+import { useAuth } from '../auth';
 import { PageHeader, Card, CardHeader, Button, Input, Badge, Table, Alert, Spinner, EmptyState, Icon } from '../components/ui';
 
 export default function Services({ apiBase }) {
+  const { authFetch } = useAuth();
   const [services, setServices] = useState([]);
   const [loading, setLoading] = useState(true);
   const [deploying, setDeploying] = useState(false);
@@ -11,7 +13,7 @@ export default function Services({ apiBase }) {
 
   const load = () => {
     setLoading(true);
-    fetch(`${apiBase}/api/services`).then(r => r.json()).then(s => { setServices(s); setLoading(false); }).catch(() => setLoading(false));
+    authFetch(`${apiBase}/api/services`).then(r => r.ok ? r.json() : []).then(s => { setServices(s); setLoading(false); }).catch(() => setLoading(false));
   };
   useEffect(() => { load(); }, [apiBase]);
 
@@ -20,7 +22,7 @@ export default function Services({ apiBase }) {
     setDeploying(true);
     setAlert(null);
     try {
-      const res = await fetch(`${apiBase}/api/services/deploy`, {
+      const res = await authFetch(`${apiBase}/api/services/deploy`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: form.name, tag: form.tag, contextPath: form.contextPath || '/' + form.name.replace('-service', '') }),
       });
@@ -39,14 +41,14 @@ export default function Services({ apiBase }) {
   const destroy = async (name) => {
     if (!window.confirm(`Are you sure you want to destroy "${name}"? This will remove it from the cluster.`)) return;
     try {
-      await fetch(`${apiBase}/api/services/${name}`, { method: 'DELETE' });
+      await authFetch(`${apiBase}/api/services/${name}`, { method: 'DELETE' });
       setAlert({ type: 'success', msg: `Destroyed ${name}` });
       load();
     } catch (err) { setAlert({ type: 'error', msg: err.message }); }
   };
 
   const restart = async (name) => {
-    await fetch(`${apiBase}/api/services/${name}/restart`, { method: 'POST' });
+    await authFetch(`${apiBase}/api/services/${name}/restart`, { method: 'POST' });
     setAlert({ type: 'info', msg: `Restarting ${name}...` });
   };
 
