@@ -71,7 +71,7 @@ function Sidebar() {
 
 export default function App() {
   return (
-    <Router>
+    <Router basename="/devconsole">
       <div className="flex">
         <Sidebar />
         <main className="flex-1 p-6 overflow-auto">
