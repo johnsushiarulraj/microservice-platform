@@ -2,12 +2,28 @@
 
 > See PLAN.md for full plan details.
 
-## Current Phase: All 5 phases complete (MVP)
+## Current Phase: A, B, D complete. C (payment system per build guide) pending.
 
 ## Summary
 - Phase 1 (Infrastructure): DONE — 12 ports, all pods running
-- Phase 2 (DevConsole Backend): DONE — health, services, SQS, S3, keycloak APIs
+- Phase 2 (DevConsole Backend): DONE — health, services, SQS, S3, keycloak, google SSO APIs
 - Phase 3 (DevConsole Frontend): DONE — Dashboard, Services, Create Service, SQS/S3 managers
+- Phase A (Security + Gateway): DONE — single entry point, JWT auth, rate limiting, circuit breaker, login page, Google SSO
+- Phase B (Full Test Service): DONE — order-service tests PostgreSQL, Outbox, RBAC, Redis, Kafka. LocalStack services need more memory.
+- Phase D (UI Polish + Learn): DONE — 73 learn pages, professional redesign, login/logout/change password
+
+## Cloudflare Tunnel
+- Config: ~/.cloudflared/config.yml
+- Single route: platform.javabackend.com → gateway (port 18090)
+- Start: ~/.cloudflared/start-tunnel.sh
+- Stop: ~/.cloudflared/stop-tunnel.sh
+- Google OAuth: configured in ~/.cloudflared/remote-credentials.env
+
+## Known Issues
+- LocalStack restarts under memory pressure (S3, DynamoDB, SQS affected)
+- OpenSearch search indexing needs investigation
+- Keycloak admin console still uses separate admin/admin credentials
+- ~37 learn pages still to be added (Database Design, Multithreading, Java Best Practices, etc.)
 - Phase 4 (Template Repo): DONE — rename.sh, build.sh, CI, tests (12 pass)
 - Phase 5 (Learn Section): DONE — 65 pages, 45 more can be added incrementally
 
