@@ -104,7 +104,7 @@ public class InfraHealthService {
     private Map<String, String> checkKeycloak() {
         try {
             RestTemplate rest = new RestTemplate();
-            rest.getForObject("http://" + keycloakHost + ":" + keycloakPort + "/realms/template/.well-known/openid-configuration", String.class);
+            rest.getForObject("http://" + keycloakHost + ":" + keycloakPort + "/auth/realms/template/.well-known/openid-configuration", String.class);
             return Map.of("status", "UP");
         } catch (Exception e) {
             return Map.of("status", "DOWN", "error", e.getMessage());

@@ -5,7 +5,7 @@ spring:
         jwt:
           # Use jwk-set-uri only (no issuer validation) so tokens from both
           # localhost and platform.javabackend.com are accepted
-          jwk-set-uri: http://keycloak.payments.svc.cluster.local:8080/realms/template/protocol/openid-connect/certs
+          jwk-set-uri: http://keycloak.payments.svc.cluster.local:8080/auth/realms/template/protocol/openid-connect/certs
       client:
         registration:
           keycloak:
@@ -16,7 +16,7 @@ spring:
             scope: openid
         provider:
           keycloak:
-            issuer-uri: http://keycloak.payments.svc.cluster.local:8080/realms/template
+            issuer-uri: http://keycloak.payments.svc.cluster.local:8080/auth/realms/template
 
   # Redis for rate limiting
   redis:
@@ -43,12 +43,13 @@ spring:
 
       routes:
         # ── PUBLIC: Keycloak token + account (no JWT) ─────────────────────
+        # No StripPrefix — Keycloak is configured with KC_HTTP_RELATIVE_PATH=/auth
         - id: keycloak-auth
           uri: http://keycloak.payments.svc.cluster.local:8080
           predicates:
             - Path=/auth/**
           filters:
-            - StripPrefix=1
+            - PreserveHostHeader
 
         # ── PUBLIC + PROTECTED: DevConsole ────────────────────────────────
         # Public paths handled by SecurityConfig, JWT validated on protected paths

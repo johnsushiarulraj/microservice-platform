@@ -46,7 +46,7 @@ public class KeycloakSetupService {
 
         HttpEntity<MultiValueMap<String, String>> req = new HttpEntity<>(params, headers);
         ResponseEntity<Map> response = rest.postForEntity(
-                baseUrl() + "/realms/master/protocol/openid-connect/token", req, Map.class);
+                baseUrl() + "/auth/realms/master/protocol/openid-connect/token", req, Map.class);
         return (String) response.getBody().get("access_token");
     }
 
@@ -64,13 +64,13 @@ public class KeycloakSetupService {
 
         // 1. Create realm if not exists
         try {
-            rest.exchange(baseUrl() + "/admin/realms/" + realm, HttpMethod.GET,
+            rest.exchange(baseUrl() + "/auth/admin/realms/" + realm, HttpMethod.GET,
                     new HttpEntity<>(authHeaders(token)), String.class);
             results.add("Realm '" + realm + "' already exists");
         } catch (HttpClientErrorException.NotFound e) {
             Map<String, Object> realmBody = Map.of(
                     "realm", realm, "enabled", true, "registrationAllowed", false);
-            rest.postForEntity(baseUrl() + "/admin/realms",
+            rest.postForEntity(baseUrl() + "/auth/admin/realms",
                     new HttpEntity<>(realmBody, authHeaders(token)), String.class);
             results.add("Realm '" + realm + "' created");
         }
@@ -86,7 +86,7 @@ public class KeycloakSetupService {
                     "serviceAccountsEnabled", true,
                     "secret", clientSecret,
                     "redirectUris", List.of("*"));
-            rest.postForEntity(baseUrl() + "/admin/realms/" + realm + "/clients",
+            rest.postForEntity(baseUrl() + "/auth/admin/realms/" + realm + "/clients",
                     new HttpEntity<>(clientBody, authHeaders(token)), String.class);
             results.add("Client '" + clientId + "' created");
         } else {
@@ -96,7 +96,7 @@ public class KeycloakSetupService {
         // 3. Create roles
         for (String role : roles) {
             try {
-                rest.postForEntity(baseUrl() + "/admin/realms/" + realm + "/roles",
+                rest.postForEntity(baseUrl() + "/auth/admin/realms/" + realm + "/roles",
                         new HttpEntity<>(Map.of("name", role), authHeaders(token)), String.class);
                 results.add("Role '" + role + "' created");
             } catch (HttpClientErrorException.Conflict e) {
@@ -122,7 +122,7 @@ public class KeycloakSetupService {
                 userBody.put("credentials", List.of(Map.of(
                         "type", "password", "value", password, "temporary", false)));
 
-                rest.postForEntity(baseUrl() + "/admin/realms/" + realm + "/users",
+                rest.postForEntity(baseUrl() + "/auth/admin/realms/" + realm + "/users",
                         new HttpEntity<>(userBody, authHeaders(token)), String.class);
                 userId = findUser(token, realm, username);
                 results.add("User '" + username + "' created");
@@ -135,11 +135,11 @@ public class KeycloakSetupService {
                 updateBody.put("lastName", "User");
                 updateBody.put("email", username + "@example.com");
                 updateBody.put("requiredActions", List.of());
-                rest.exchange(baseUrl() + "/admin/realms/" + realm + "/users/" + userId,
+                rest.exchange(baseUrl() + "/auth/admin/realms/" + realm + "/users/" + userId,
                         HttpMethod.PUT, new HttpEntity<>(updateBody, authHeaders(token)), String.class);
 
                 // Reset password
-                rest.exchange(baseUrl() + "/admin/realms/" + realm + "/users/" + userId + "/reset-password",
+                rest.exchange(baseUrl() + "/auth/admin/realms/" + realm + "/users/" + userId + "/reset-password",
                         HttpMethod.PUT, new HttpEntity<>(Map.of("type", "password", "value", password, "temporary", false),
                                 authHeaders(token)), String.class);
                 results.add("User '" + username + "' already exists — updated");
@@ -149,12 +149,12 @@ public class KeycloakSetupService {
             if (role != null && userId != null) {
                 try {
                     ResponseEntity<Map> roleMap = rest.exchange(
-                            baseUrl() + "/admin/realms/" + realm + "/roles/" + role,
+                            baseUrl() + "/auth/admin/realms/" + realm + "/roles/" + role,
                             HttpMethod.GET, new HttpEntity<>(authHeaders(token)), Map.class);
                     Map<String, Object> roleRep = new HashMap<>(roleMap.getBody());
 
                     rest.postForEntity(
-                            baseUrl() + "/admin/realms/" + realm + "/users/" + userId + "/role-mappings/realm",
+                            baseUrl() + "/auth/admin/realms/" + realm + "/users/" + userId + "/role-mappings/realm",
                             new HttpEntity<>(List.of(roleRep), authHeaders(token)), String.class);
                     results.add("Role '" + role + "' assigned to '" + username + "'");
                 } catch (Exception e) {
@@ -169,7 +169,7 @@ public class KeycloakSetupService {
     private String findClient(String token, String realm, String clientId) {
         try {
             ResponseEntity<List> resp = rest.exchange(
-                    baseUrl() + "/admin/realms/" + realm + "/clients?clientId=" + clientId,
+                    baseUrl() + "/auth/admin/realms/" + realm + "/clients?clientId=" + clientId,
                     HttpMethod.GET, new HttpEntity<>(authHeaders(token)), List.class);
             List<Map> clients = resp.getBody();
             if (clients != null && !clients.isEmpty()) {
@@ -182,7 +182,7 @@ public class KeycloakSetupService {
     private String findUser(String token, String realm, String username) {
         try {
             ResponseEntity<List> resp = rest.exchange(
-                    baseUrl() + "/admin/realms/" + realm + "/users?username=" + username + "&exact=true",
+                    baseUrl() + "/auth/admin/realms/" + realm + "/users?username=" + username + "&exact=true",
                     HttpMethod.GET, new HttpEntity<>(authHeaders(token)), List.class);
             List<Map> users = resp.getBody();
             if (users != null && !users.isEmpty()) {

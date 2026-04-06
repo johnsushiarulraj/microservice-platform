@@ -37,7 +37,7 @@ public class KeycloakController {
         String password = body.get("password");
 
         String tokenUrl = "http://" + keycloakHost + ":" + keycloakPort +
-                "/realms/" + realm + "/protocol/openid-connect/token";
+                "/auth/realms/" + realm + "/protocol/openid-connect/token";
 
         RestTemplate rest = new RestTemplate();
         HttpHeaders headers = new HttpHeaders();
@@ -73,7 +73,7 @@ public class KeycloakController {
         tokenParams.add("username", adminUser);
         tokenParams.add("password", adminPassword);
         ResponseEntity<Map> tokenResp = rest.postForEntity(
-            baseUrl + "/realms/master/protocol/openid-connect/token",
+            baseUrl + "/auth/realms/master/protocol/openid-connect/token",
             new HttpEntity<>(tokenParams, tokenHeaders), Map.class);
         String adminToken = (String) tokenResp.getBody().get("access_token");
 
@@ -82,7 +82,7 @@ public class KeycloakController {
         authHeaders.setBearerAuth(adminToken);
         authHeaders.setContentType(MediaType.APPLICATION_JSON);
         ResponseEntity<List> usersResp = rest.exchange(
-            baseUrl + "/admin/realms/" + realm + "/users?username=" + username + "&exact=true",
+            baseUrl + "/auth/admin/realms/" + realm + "/users?username=" + username + "&exact=true",
             HttpMethod.GET, new HttpEntity<>(authHeaders), List.class);
         List<Map> users = usersResp.getBody();
         if (users == null || users.isEmpty()) {
@@ -92,7 +92,7 @@ public class KeycloakController {
 
         // Reset password
         rest.exchange(
-            baseUrl + "/admin/realms/" + realm + "/users/" + userId + "/reset-password",
+            baseUrl + "/auth/admin/realms/" + realm + "/users/" + userId + "/reset-password",
             HttpMethod.PUT,
             new HttpEntity<>(Map.of("type", "password", "value", newPassword, "temporary", false), authHeaders),
             String.class);

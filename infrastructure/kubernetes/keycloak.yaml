@@ -76,6 +76,8 @@ spec:
               value: "true"
             - name: KC_PROXY_HEADERS
               value: "xforwarded"
+            - name: KC_HTTP_RELATIVE_PATH
+              value: "/auth"
           ports:
             - name: http
               containerPort: 8080
@@ -93,14 +95,14 @@ spec:
               cpu: 1000m
           readinessProbe:
             httpGet:
-              path: /realms/template/.well-known/openid-configuration
+              path: /auth/realms/template/.well-known/openid-configuration
               port: 8080
             initialDelaySeconds: 60
             periodSeconds: 10
             failureThreshold: 15
           livenessProbe:
             httpGet:
-              path: /realms/master/.well-known/openid-configuration
+              path: /auth/realms/master/.well-known/openid-configuration
               port: 8080
             initialDelaySeconds: 90
             periodSeconds: 15

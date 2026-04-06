@@ -59,13 +59,13 @@ public class GoogleSsoController {
         try {
             // Try to update existing
             rest.exchange(
-                baseUrl + "/admin/realms/" + realm + "/identity-provider/instances/google",
+                baseUrl + "/auth/admin/realms/" + realm + "/identity-provider/instances/google",
                 HttpMethod.PUT, new HttpEntity<>(idpConfig, headers), String.class);
             return Map.of("status", "updated", "message", "Google SSO updated for realm " + realm);
         } catch (HttpClientErrorException.NotFound e) {
             // Create new
             rest.postForEntity(
-                baseUrl + "/admin/realms/" + realm + "/identity-provider/instances",
+                baseUrl + "/auth/admin/realms/" + realm + "/identity-provider/instances",
                 new HttpEntity<>(idpConfig, headers), String.class);
             return Map.of("status", "created", "message", "Google SSO configured for realm " + realm);
         }
@@ -80,7 +80,7 @@ public class GoogleSsoController {
             headers.setBearerAuth(token);
 
             rest.exchange(
-                baseUrl + "/admin/realms/" + realm + "/identity-provider/instances/google",
+                baseUrl + "/auth/admin/realms/" + realm + "/identity-provider/instances/google",
                 HttpMethod.GET, new HttpEntity<>(headers), Map.class);
             return Map.of("configured", true);
         } catch (Exception e) {
@@ -99,7 +99,7 @@ public class GoogleSsoController {
         headers.setContentType(MediaType.APPLICATION_FORM_URLENCODED);
 
         var resp = rest.postForEntity(
-            "http://" + keycloakHost + ":" + keycloakPort + "/realms/master/protocol/openid-connect/token",
+            "http://" + keycloakHost + ":" + keycloakPort + "/auth/realms/master/protocol/openid-connect/token",
             new HttpEntity<>(params, headers), Map.class);
         return (String) resp.getBody().get("access_token");
     }
