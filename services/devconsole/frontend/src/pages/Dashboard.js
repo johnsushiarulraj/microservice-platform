@@ -36,8 +36,8 @@ export default function Dashboard({ apiBase }) {
 
   useEffect(() => {
     Promise.all([
-      fetch(`${apiBase}/api/health`).then(r => r.json()).catch(() => ({})),
-      fetch(`${apiBase}/api/services`).then(r => r.json()).catch(() => []),
+      fetch(`${apiBase}/api/health`).then(r => r.ok ? r.json() : ({})).catch(() => ({})),
+      fetch(`${apiBase}/api/services`).then(r => r.ok ? r.json() : []).catch(() => []),
     ]).then(([h, s]) => {
       setHealth(h);
       setServices(s);
