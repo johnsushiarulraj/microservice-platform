@@ -16,15 +16,14 @@ public class SecurityConfig {
             .csrf(ServerHttpSecurity.CsrfSpec::disable)
             .authorizeExchange(exchanges -> exchanges
                 // ── PUBLIC: No JWT needed ────────────────────────────────
-                // Root redirect + Gateway health
                 .pathMatchers("/").permitAll()
                 .pathMatchers("/actuator/**").permitAll()
                 .pathMatchers("/fallback/**").permitAll()
 
-                // Keycloak auth endpoints (must be public to get tokens)
+                // Keycloak auth endpoints
                 .pathMatchers("/auth/**").permitAll()
 
-                // DevConsole: SPA shell + static assets must be public (React handles auth internally)
+                // DevConsole: SPA shell + static assets + public pages
                 .pathMatchers("/devconsole/").permitAll()
                 .pathMatchers("/devconsole/index.html").permitAll()
                 .pathMatchers("/devconsole/static/**").permitAll()
@@ -35,15 +34,19 @@ public class SecurityConfig {
                 .pathMatchers("/devconsole/create").permitAll()
                 .pathMatchers("/devconsole/actuator/**").permitAll()
 
-                // DevConsole API: health is public, scaffold (create service) is public
+                // DevConsole API: public endpoints
                 .pathMatchers("/devconsole/api/health").permitAll()
                 .pathMatchers("/devconsole/api/scaffold").permitAll()
                 .pathMatchers("/devconsole/api/setup/google-sso").permitAll()
 
-                // ── PROTECTED: JWT required ──────────────────────────────
+                // ── PROTECTED: JWT required (from header OR cookie) ──────
                 .anyExchange().authenticated()
             )
-            .oauth2ResourceServer(ServerHttpSecurity.OAuth2ResourceServerSpec::jwt);
+            .oauth2ResourceServer(oauth2 -> oauth2
+                .jwt()
+                .and()
+                .bearerTokenConverter(new CookieOrHeaderBearerTokenConverter())
+            );
         return http.build();
     }
 }
