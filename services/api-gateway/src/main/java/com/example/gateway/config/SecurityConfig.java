@@ -16,7 +16,8 @@ public class SecurityConfig {
             .csrf(ServerHttpSecurity.CsrfSpec::disable)
             .authorizeExchange(exchanges -> exchanges
                 // ── PUBLIC: No JWT needed ────────────────────────────────
-                // Gateway health
+                // Root redirect + Gateway health
+                .pathMatchers("/").permitAll()
                 .pathMatchers("/actuator/**").permitAll()
                 .pathMatchers("/fallback/**").permitAll()
 

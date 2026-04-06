@@ -30,6 +30,9 @@ export function AuthProvider({ children }) {
     localStorage.setItem('refresh_token', refresh);
     const u = parseToken(accessToken);
     localStorage.setItem('user', JSON.stringify(u));
+    // Set as cookie so browser sends it for infrastructure UI links (Grafana, pgAdmin, etc.)
+    const maxAge = u?.exp ? Math.max(0, u.exp - Math.floor(Date.now() / 1000)) : 300;
+    document.cookie = `access_token=${accessToken}; path=/; max-age=${maxAge}; SameSite=Lax`;
     setToken(accessToken);
     setRefreshToken(refresh);
     setUser(u);
@@ -80,6 +83,7 @@ export function AuthProvider({ children }) {
     localStorage.removeItem('access_token');
     localStorage.removeItem('refresh_token');
     localStorage.removeItem('user');
+    document.cookie = 'access_token=; path=/; max-age=0';
     setToken(null);
     setRefreshToken(null);
     setUser(null);
