@@ -16,5 +16,38 @@ nodes:
       - containerPort: 443
         hostPort: 443
         protocol: TCP
+    extraMounts:
+      - hostPath: ./data/postgres
+        containerPath: /data/postgres
+      - hostPath: ./data/opensearch
+        containerPath: /data/opensearch
+      - hostPath: ./data/localstack
+        containerPath: /data/localstack
+      - hostPath: ./data/kafka
+        containerPath: /data/kafka
+      - hostPath: ./data/keycloak-db
+        containerPath: /data/keycloak-db
   - role: worker
+    extraMounts:
+      - hostPath: ./data/postgres
+        containerPath: /data/postgres
+      - hostPath: ./data/opensearch
+        containerPath: /data/opensearch
+      - hostPath: ./data/localstack
+        containerPath: /data/localstack
+      - hostPath: ./data/kafka
+        containerPath: /data/kafka
+      - hostPath: ./data/keycloak-db
+        containerPath: /data/keycloak-db
   - role: worker
+    extraMounts:
+      - hostPath: ./data/postgres
+        containerPath: /data/postgres
+      - hostPath: ./data/opensearch
+        containerPath: /data/opensearch
+      - hostPath: ./data/localstack
+        containerPath: /data/localstack
+      - hostPath: ./data/kafka
+        containerPath: /data/kafka
+      - hostPath: ./data/keycloak-db
+        containerPath: /data/keycloak-db

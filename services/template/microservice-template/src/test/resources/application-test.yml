@@ -1,0 +1,33 @@
+spring:
+  profiles:
+    active: test
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+  liquibase:
+    enabled: true
+  cloud:
+    stream:
+      function:
+        definition: templateEventConsumer
+      bindings:
+        templateEventConsumer-in-0:
+          destination: template-events
+          group: test-group
+      kafka:
+        binder:
+          auto-create-topics: true
+
+aws:
+  region: us-east-1
+  s3:
+    bucket: template-documents
+  sqs:
+    task-queue-url: http://localhost:4566/000000000000/template-tasks
+
+logging:
+  level:
+    com.example.template: DEBUG
+    org.testcontainers: WARN
+    com.github.dockerjava: WARN

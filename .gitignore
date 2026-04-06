@@ -6,3 +6,9 @@ target/
 .DS_Store
 /tmp/pf-*.pid
 /tmp/pf-*.log
+node_modules/
+dist/
+build/
+
+# Persistent data (survives cluster restarts)
+data/

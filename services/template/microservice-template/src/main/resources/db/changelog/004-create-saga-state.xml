@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+        http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.9.xsd">
+
+    <changeSet id="004" author="template">
+        <createTable tableName="saga_state">
+            <column name="id" type="uuid" defaultValueComputed="gen_random_uuid()">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="correlation_id" type="varchar(255)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="state" type="varchar(50)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="payload" type="text">
+                <constraints nullable="false"/>
+            </column>
+            <column name="failure_reason" type="text"/>
+            <column name="version" type="bigint" defaultValueNumeric="0">
+                <constraints nullable="false"/>
+            </column>
+            <column name="created_at" type="timestamptz"/>
+            <column name="updated_at" type="timestamptz"/>
+        </createTable>
+
+        <createTable tableName="saga_state_transitions">
+            <column name="id" type="uuid" defaultValueComputed="gen_random_uuid()">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="saga_id" type="varchar(255)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="from_state" type="varchar(50)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="to_state" type="varchar(50)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="reason" type="varchar(500)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="occurred_at" type="timestamptz">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+        <createIndex tableName="saga_state_transitions" indexName="idx_saga_transitions_saga_id">
+            <column name="saga_id"/>
+        </createIndex>
+    </changeSet>
+</databaseChangeLog>

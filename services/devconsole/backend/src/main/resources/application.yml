@@ -1,0 +1,52 @@
+server:
+  port: 8080
+  servlet:
+    context-path: /devconsole
+
+spring:
+  application:
+    name: devconsole
+  datasource:
+    url: jdbc:postgresql://${DB_HOST:postgres-postgresql.payments.svc.cluster.local}:5432/template
+    username: template
+    password: template123
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: false
+    properties:
+      hibernate:
+        default_schema: devconsole
+
+# All custom config under 'app' to avoid Kubernetes env var collisions
+app:
+  aws:
+    endpoint: http://${LOCALSTACK_HOST:localstack.payments.svc.cluster.local}:4566
+    region: us-east-1
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP:kafka-kafka-bootstrap.payments.svc.cluster.local:9092}
+  opensearch:
+    host: ${OPENSEARCH_HOST:opensearch-cluster-master.payments.svc.cluster.local}
+    port: 9200
+    scheme: https
+    username: admin
+    password: Str0ngP@ssw0rd#2026
+  redis:
+    host: ${APP_REDIS_HOST:redis-master.payments.svc.cluster.local}
+    port: 6379
+  keycloak:
+    host: ${APP_KEYCLOAK_HOST:keycloak.payments.svc.cluster.local}
+    port: 8080
+    admin-user: admin
+    admin-password: admin
+  registry:
+    url: https://ghcr.io
+    org: johnsushiarulraj
+  kubernetes:
+    namespace: payments
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus

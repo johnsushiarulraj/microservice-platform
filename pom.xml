@@ -5,13 +5,14 @@
     <modelVersion>4.0.0</modelVersion>
 
     <groupId>com.example</groupId>
-    <artifactId>deployment-env-parent</artifactId>
+    <artifactId>microservice-platform-parent</artifactId>
     <version>1.0.0</version>
     <packaging>pom</packaging>
-    <name>deployment-env-parent</name>
+    <name>microservice-platform-parent</name>
 
     <modules>
-        <module>api-gateway</module>
+        <module>services/api-gateway</module>
+        <module>services/devconsole/backend</module>
     </modules>
 
     <properties>

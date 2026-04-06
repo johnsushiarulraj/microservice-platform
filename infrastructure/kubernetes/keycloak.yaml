@@ -68,12 +68,16 @@ spec:
               value: admin
             - name: KC_HTTP_PORT
               value: "8080"
+            - name: KC_HOSTNAME
+              value: "keycloak.payments.svc.cluster.local"
             - name: KC_HOSTNAME_STRICT
               value: "false"
             - name: KC_HOSTNAME_STRICT_HTTPS
               value: "false"
             - name: KC_HTTP_ENABLED
               value: "true"
+            - name: KC_HOSTNAME_PORT
+              value: "8080"
           ports:
             - name: http
               containerPort: 8080
