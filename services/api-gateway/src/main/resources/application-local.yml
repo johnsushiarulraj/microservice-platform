@@ -16,11 +16,52 @@ spring:
         provider:
           keycloak:
             issuer-uri: http://keycloak.payments.svc.cluster.local:8080/realms/template
+
+  # Redis for rate limiting
+  redis:
+    host: redis-master.payments.svc.cluster.local
+    port: 6379
+
   cloud:
     gateway:
+      # Global CORS
+      globalcors:
+        corsConfigurations:
+          '[/**]':
+            allowedOrigins: "*"
+            allowedMethods: "*"
+            allowedHeaders: "*"
+
+      # Default filters for all routes
+      default-filters:
+        - name: RequestRateLimiter
+          args:
+            redis-rate-limiter.replenishRate: 50
+            redis-rate-limiter.burstCapacity: 100
+            redis-rate-limiter.requestedTokens: 1
+
       routes:
-        # All /template/** traffic → microservice-template
-        # TokenRelay= forwards the caller's JWT to the downstream service
+        # ── PUBLIC: Keycloak token + account (no JWT) ─────────────────────
+        - id: keycloak-auth
+          uri: http://keycloak.payments.svc.cluster.local:8080
+          predicates:
+            - Path=/auth/**
+          filters:
+            - StripPrefix=1
+
+        # ── PUBLIC + PROTECTED: DevConsole ────────────────────────────────
+        # Public paths handled by SecurityConfig, JWT validated on protected paths
+        - id: devconsole
+          uri: http://devconsole.payments.svc.cluster.local:8080
+          predicates:
+            - Path=/devconsole/**
+          filters:
+            - name: CircuitBreaker
+              args:
+                name: devconsole-cb
+                fallbackUri: forward:/fallback/devconsole
+
+        # ── PROTECTED: Microservice Template ──────────────────────────────
         - id: microservice-template
           uri: http://microservice-template.payments.svc.cluster.local:8080
           predicates:
@@ -36,11 +77,90 @@ spring:
                 retries: 3
                 statuses: BAD_GATEWAY,SERVICE_UNAVAILABLE,GATEWAY_TIMEOUT
                 methods: GET
-                backoff:
-                  firstBackoff: 100ms
-                  maxBackoff: 500ms
-                  factor: 2
-                  basedOnPreviousValue: false
+
+        # ── PROTECTED: Grafana (sub-path configured) ──────────────────────
+        - id: grafana
+          uri: http://monitoring-grafana.payments.svc.cluster.local:80
+          predicates:
+            - Path=/grafana/**
+          filters:
+            - StripPrefix=1
+            - name: CircuitBreaker
+              args:
+                name: grafana-cb
+                fallbackUri: forward:/fallback/grafana
+
+        # ── PROTECTED: Prometheus ─────────────────────────────────────────
+        - id: prometheus
+          uri: http://monitoring-kube-prometheus-prometheus.payments.svc.cluster.local:9090
+          predicates:
+            - Path=/prometheus/**
+          filters:
+            - StripPrefix=1
+            - name: CircuitBreaker
+              args:
+                name: prometheus-cb
+                fallbackUri: forward:/fallback/prometheus
+
+        # ── PROTECTED: pgAdmin ────────────────────────────────────────────
+        - id: pgadmin
+          uri: http://pgadmin.payments.svc.cluster.local:80
+          predicates:
+            - Path=/pgadmin/**
+          filters:
+            - StripPrefix=1
+            - name: CircuitBreaker
+              args:
+                name: pgadmin-cb
+                fallbackUri: forward:/fallback/pgadmin
+
+        # ── PROTECTED: Kafka UI ───────────────────────────────────────────
+        - id: kafka-ui
+          uri: http://kafka-ui.payments.svc.cluster.local:8080
+          predicates:
+            - Path=/kafka-ui/**
+          filters:
+            - StripPrefix=1
+            - name: CircuitBreaker
+              args:
+                name: kafkaui-cb
+                fallbackUri: forward:/fallback/kafka-ui
+
+        # ── PROTECTED: OpenSearch Dashboards ──────────────────────────────
+        - id: opensearch-dashboards
+          uri: http://opensearch-dashboards.payments.svc.cluster.local:5601
+          predicates:
+            - Path=/opensearch/**
+          filters:
+            - StripPrefix=1
+            - name: CircuitBreaker
+              args:
+                name: opensearch-cb
+                fallbackUri: forward:/fallback/opensearch
+
+        # ── PROTECTED: DynamoDB Admin ─────────────────────────────────────
+        - id: dynamodb-admin
+          uri: http://dynamodb-admin.payments.svc.cluster.local:8001
+          predicates:
+            - Path=/dynamodb/**
+          filters:
+            - StripPrefix=1
+            - name: CircuitBreaker
+              args:
+                name: dynamodb-cb
+                fallbackUri: forward:/fallback/dynamodb
+
+        # ── PROTECTED: Keycloak Admin Console ─────────────────────────────
+        - id: keycloak-admin
+          uri: http://keycloak.payments.svc.cluster.local:8080
+          predicates:
+            - Path=/keycloak-admin/**
+          filters:
+            - StripPrefix=1
+            - name: CircuitBreaker
+              args:
+                name: keycloak-admin-cb
+                fallbackUri: forward:/fallback/keycloak
 
     loadbalancer:
       ribbon:
@@ -49,4 +169,4 @@ spring:
 logging:
   level:
     com.example.gateway: DEBUG
-    org.springframework.cloud.gateway: DEBUG
+    org.springframework.cloud.gateway: INFO

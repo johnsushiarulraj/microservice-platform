@@ -1,0 +1,164 @@
+---
+# ═══════════════════════════════════════════════════════════════════════════════
+# pgAdmin — PostgreSQL management UI
+# ═══════════════════════════════════════════════════════════════════════════════
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pgadmin
+  namespace: payments
+  labels:
+    app: pgadmin
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: pgadmin
+  template:
+    metadata:
+      labels:
+        app: pgadmin
+    spec:
+      containers:
+        - name: pgadmin
+          image: dpage/pgadmin4:latest
+          ports:
+            - containerPort: 80
+          env:
+            - name: PGADMIN_DEFAULT_EMAIL
+              value: "admin@admin.com"
+            - name: PGADMIN_DEFAULT_PASSWORD
+              value: "admin"
+            - name: PGADMIN_CONFIG_SERVER_MODE
+              value: "False"
+            - name: PGADMIN_CONFIG_MASTER_PASSWORD_REQUIRED
+              value: "False"
+          resources:
+            requests:
+              memory: 128Mi
+              cpu: 50m
+            limits:
+              memory: 256Mi
+              cpu: 250m
+          readinessProbe:
+            httpGet:
+              path: /misc/ping
+              port: 80
+            initialDelaySeconds: 15
+            periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: pgadmin
+  namespace: payments
+spec:
+  selector:
+    app: pgadmin
+  ports:
+    - port: 80
+      targetPort: 80
+---
+# ═══════════════════════════════════════════════════════════════════════════════
+# DynamoDB Admin — DynamoDB management UI
+# ═══════════════════════════════════════════════════════════════════════════════
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: dynamodb-admin
+  namespace: payments
+  labels:
+    app: dynamodb-admin
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: dynamodb-admin
+  template:
+    metadata:
+      labels:
+        app: dynamodb-admin
+    spec:
+      containers:
+        - name: dynamodb-admin
+          image: aaronshaf/dynamodb-admin:latest
+          ports:
+            - containerPort: 8001
+          env:
+            - name: DYNAMO_ENDPOINT
+              value: "http://localstack.payments.svc.cluster.local:4566"
+          resources:
+            requests:
+              memory: 64Mi
+              cpu: 50m
+            limits:
+              memory: 128Mi
+              cpu: 250m
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: dynamodb-admin
+  namespace: payments
+spec:
+  selector:
+    app: dynamodb-admin
+  ports:
+    - port: 8001
+      targetPort: 8001
+---
+# ═══════════════════════════════════════════════════════════════════════════════
+# Kafka UI — Kafka management UI
+# ═══════════════════════════════════════════════════════════════════════════════
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kafka-ui
+  namespace: payments
+  labels:
+    app: kafka-ui
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: kafka-ui
+  template:
+    metadata:
+      labels:
+        app: kafka-ui
+    spec:
+      containers:
+        - name: kafka-ui
+          image: provectuslabs/kafka-ui:latest
+          ports:
+            - containerPort: 8080
+          env:
+            - name: KAFKA_CLUSTERS_0_NAME
+              value: "local"
+            - name: KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS
+              value: "kafka-kafka-bootstrap.payments.svc.cluster.local:9092"
+          resources:
+            requests:
+              memory: 256Mi
+              cpu: 100m
+            limits:
+              memory: 512Mi
+              cpu: 500m
+          readinessProbe:
+            httpGet:
+              path: /actuator/health
+              port: 8080
+            initialDelaySeconds: 30
+            periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: kafka-ui
+  namespace: payments
+spec:
+  selector:
+    app: kafka-ui
+  ports:
+    - port: 8080
+      targetPort: 8080

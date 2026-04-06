@@ -15,7 +15,30 @@ public class SecurityConfig {
         http
             .csrf(ServerHttpSecurity.CsrfSpec::disable)
             .authorizeExchange(exchanges -> exchanges
-                .pathMatchers("/actuator/**", "/fallback/**").permitAll()
+                // ── PUBLIC: No JWT needed ────────────────────────────────
+                // Gateway health
+                .pathMatchers("/actuator/**").permitAll()
+                .pathMatchers("/fallback/**").permitAll()
+
+                // Keycloak auth endpoints (must be public to get tokens)
+                .pathMatchers("/auth/**").permitAll()
+
+                // DevConsole: login page, static assets, learn section, create service, dashboard
+                .pathMatchers("/devconsole/login").permitAll()
+                .pathMatchers("/devconsole/static/**").permitAll()
+                .pathMatchers("/devconsole/index.html").permitAll()
+                .pathMatchers("/devconsole/favicon.ico").permitAll()
+                .pathMatchers("/devconsole/manifest.json").permitAll()
+                .pathMatchers("/devconsole/").permitAll()
+                .pathMatchers("/devconsole/learn/**").permitAll()
+                .pathMatchers("/devconsole/create").permitAll()
+                .pathMatchers("/devconsole/actuator/**").permitAll()
+
+                // DevConsole API: health is public, scaffold (create service) is public
+                .pathMatchers("/devconsole/api/health").permitAll()
+                .pathMatchers("/devconsole/api/scaffold").permitAll()
+
+                // ── PROTECTED: JWT required ──────────────────────────────
                 .anyExchange().authenticated()
             )
             .oauth2ResourceServer(ServerHttpSecurity.OAuth2ResourceServerSpec::jwt);
