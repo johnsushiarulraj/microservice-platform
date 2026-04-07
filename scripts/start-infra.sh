@@ -13,32 +13,31 @@ IMAGE_TAG="local"
 
 cd "$ROOT_DIR"
 
+START_TIME=$SECONDS
+
 # ── 0. Create persistent data directories ────────────────────────────────────
-echo "==> [0/16] Ensuring persistent data directories exist..."
+echo "==> [0] Ensuring persistent data directories exist..."
 mkdir -p data/postgres data/opensearch data/localstack data/kafka data/keycloak-db
 
 # ── 1. Kind cluster ──────────────────────────────────────────────────────────
-echo "==> [1/16] Creating Kind cluster '$CLUSTER_NAME'..."
+echo "==> [1] Creating Kind cluster '$CLUSTER_NAME'..."
 if kind get clusters 2>/dev/null | grep -q "^${CLUSTER_NAME}$"; then
   echo "    Cluster already exists, skipping."
 else
   kind create cluster --config infrastructure/kind/cluster-config.yaml --name "$CLUSTER_NAME"
 fi
 
-# ── 2. Namespace ─────────────────────────────────────────────────────────────
-echo "==> [2/16] Creating namespace '$NAMESPACE'..."
+# ── 2. Namespace + Ingress + Helm repos (quick sequential setup) ─────────────
+echo "==> [2] Namespace, Ingress, Helm repos..."
 kubectl create namespace "$NAMESPACE" --dry-run=client -o yaml | kubectl apply -f -
 
-# ── 3. NGINX Ingress Controller ───────────────────────────────────────────────
-echo "==> [3/16] Installing NGINX Ingress Controller..."
 kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/main/deploy/static/provider/kind/deploy.yaml
 kubectl wait --namespace ingress-nginx \
   --for=condition=ready pod \
   --selector=app.kubernetes.io/component=controller \
-  --timeout=120s
+  --timeout=120s &
+INGRESS_PID=$!
 
-# ── 4. Helm repos ─────────────────────────────────────────────────────────────
-echo "==> [4/16] Adding Helm repos..."
 helm repo add bitnami               https://charts.bitnami.com/bitnami                 2>/dev/null || true
 helm repo add localstack            https://helm.localstack.cloud                      2>/dev/null || true
 helm repo add grafana               https://grafana.github.io/helm-charts              2>/dev/null || true
@@ -48,123 +47,221 @@ helm repo add strimzi               https://strimzi.io/charts/                  
 helm repo add kubernetes-dashboard  https://kubernetes.github.io/dashboard/            2>/dev/null || true
 helm repo update
 
-# ── 5. PostgreSQL ─────────────────────────────────────────────────────────────
-echo "==> [5/16] Installing PostgreSQL..."
-helm upgrade --install postgres bitnami/postgresql -n "$NAMESPACE" \
-  --set auth.database=template \
-  --set auth.username=template \
-  --set auth.password=template123 \
-  --set primary.resources.requests.memory=256Mi \
-  --set primary.resources.limits.memory=512Mi \
-  --wait --timeout 120s
+wait $INGRESS_PID 2>/dev/null || true
 
-# ── 6. Redis ──────────────────────────────────────────────────────────────────
-echo "==> [6/16] Installing Redis..."
-helm upgrade --install redis bitnami/redis -n "$NAMESPACE" \
-  --set auth.enabled=false \
-  --set master.resources.requests.memory=128Mi \
-  --set master.resources.limits.memory=256Mi \
-  --set replica.replicaCount=0 \
-  --wait --timeout 120s
+# ── 3. Start Maven builds in background (while helm installs run) ────────────
+echo "==> [3] Starting Maven builds in background..."
+mvn clean package -pl services/api-gateway -am -DskipTests -q &
+MVN_GW_PID=$!
+mvn clean package -pl services/devconsole/backend -am -DskipTests -q &
+MVN_DC_PID=$!
 
-# ── 7. Kafka (Strimzi KRaft) ──────────────────────────────────────────────────
-echo "==> [7/16] Installing Kafka via Strimzi..."
-helm upgrade --install strimzi-operator strimzi/strimzi-kafka-operator \
-  -n "$NAMESPACE" \
-  --set resources.requests.memory=256Mi \
-  --set resources.limits.memory=512Mi \
-  --wait --timeout 120s
+# ── 4. PARALLEL: Data services (Postgres, Redis, Kafka, LocalStack, Keycloak)
+echo "==> [4] Installing data services in parallel (Postgres, Redis, Kafka, LocalStack, Keycloak)..."
 
-kubectl apply -f infrastructure/kubernetes/kafka-cluster.yaml
+# --- Postgres ---
+(
+  echo "    [Postgres] Installing..."
+  helm upgrade --install postgres bitnami/postgresql -n "$NAMESPACE" \
+    --set auth.database=template \
+    --set auth.username=template \
+    --set auth.password=template123 \
+    --set primary.resources.requests.memory=256Mi \
+    --set primary.resources.limits.memory=512Mi \
+    --wait --timeout 180s
+  echo "    [Postgres] Done."
+) &
+PG_PID=$!
 
-# Patch entity operator memory (avoids CrashLoopBackOff)
-sleep 10
-kubectl patch kafka kafka -n "$NAMESPACE" --type merge \
-  -p '{"spec":{"entityOperator":{"topicOperator":{"resources":{"limits":{"memory":"512Mi"},"requests":{"memory":"256Mi"}}},"userOperator":{"resources":{"limits":{"memory":"512Mi"},"requests":{"memory":"256Mi"}}}}}}' 2>/dev/null || true
+# --- Redis ---
+(
+  echo "    [Redis] Installing..."
+  helm upgrade --install redis bitnami/redis -n "$NAMESPACE" \
+    --set auth.enabled=false \
+    --set master.resources.requests.memory=128Mi \
+    --set master.resources.limits.memory=256Mi \
+    --set replica.replicaCount=0 \
+    --wait --timeout 120s
+  echo "    [Redis] Done."
+) &
+REDIS_PID=$!
 
-echo "    Waiting for Kafka broker to be ready (~3 min)..."
-for i in $(seq 1 36); do
-  kubectl get pod -l strimzi.io/cluster=kafka -n "$NAMESPACE" 2>/dev/null | grep -q "1/1.*Running" && break
+# --- Kafka (Strimzi + cluster) ---
+(
+  echo "    [Kafka] Installing Strimzi operator..."
+  helm upgrade --install strimzi-operator strimzi/strimzi-kafka-operator \
+    -n "$NAMESPACE" \
+    --set resources.requests.memory=256Mi \
+    --set resources.limits.memory=512Mi \
+    --wait --timeout 120s
+
+  kubectl apply -f infrastructure/kubernetes/kafka-cluster.yaml
+
   sleep 10
+  kubectl patch kafka kafka -n "$NAMESPACE" --type merge \
+    -p '{"spec":{"entityOperator":{"topicOperator":{"resources":{"limits":{"memory":"512Mi"},"requests":{"memory":"256Mi"}}},"userOperator":{"resources":{"limits":{"memory":"512Mi"},"requests":{"memory":"256Mi"}}}}}}' 2>/dev/null || true
+
+  echo "    [Kafka] Waiting for broker..."
+  for i in $(seq 1 36); do
+    kubectl get pod -l strimzi.io/cluster=kafka -n "$NAMESPACE" 2>/dev/null | grep -q "1/1.*Running" && break
+    sleep 10
+  done
+  echo "    [Kafka] Done."
+) &
+KAFKA_PID=$!
+
+# --- LocalStack ---
+(
+  echo "    [LocalStack] Installing..."
+  helm upgrade --install localstack localstack/localstack -n "$NAMESPACE" \
+    --set image.repository=localstack/localstack \
+    --set image.tag=3.0 \
+    --set resources.requests.memory=512Mi \
+    --set resources.limits.memory=1024Mi \
+    --set livenessProbe.initialDelaySeconds=60 \
+    --set readinessProbe.initialDelaySeconds=30 \
+    --wait --timeout 300s
+
+  kubectl apply -f infrastructure/kubernetes/localstack-init-job.yaml
+  echo "    [LocalStack] Done."
+) &
+LS_PID=$!
+
+# --- Keycloak ---
+(
+  echo "    [Keycloak] Installing..."
+  kubectl apply -f infrastructure/kubernetes/keycloak.yaml
+  kubectl rollout status deployment/keycloak -n "$NAMESPACE" --timeout=300s
+  echo "    [Keycloak] Done."
+) &
+KC_PID=$!
+
+# ── 5. PARALLEL: Observability stack (while data services install) ───────────
+echo "==> [5] Installing observability stack in parallel..."
+
+# --- OpenSearch ---
+(
+  echo "    [OpenSearch] Installing..."
+  helm upgrade --install opensearch opensearch/opensearch -n "$NAMESPACE" \
+    --set singleNode=true \
+    --set "extraEnvs[0].name=OPENSEARCH_INITIAL_ADMIN_PASSWORD" \
+    --set "extraEnvs[0].value=Str0ngP@ssw0rd#2026" \
+    --set security.enabled=false \
+    --set opensearchJavaOpts="-Xms256m -Xmx256m" \
+    --set resources.requests.memory=512Mi \
+    --set resources.limits.memory=768Mi \
+    --wait --timeout 300s
+  echo "    [OpenSearch] Done."
+
+  echo "    [OpenSearch Dashboards] Installing..."
+  helm upgrade --install opensearch-dashboards opensearch/opensearch-dashboards -n "$NAMESPACE" \
+    --set opensearchHosts="https://opensearch-cluster-master:9200" \
+    --set resources.requests.memory=256Mi \
+    --set resources.limits.memory=512Mi \
+    --set-string 'extraEnvs[0].name=DISABLE_SECURITY_DASHBOARDS_PLUGIN' \
+    --set-string 'extraEnvs[0].value=true' \
+    --set 'config.opensearch_dashboards\.yml.opensearch\.ssl\.verificationMode=none' \
+    --set 'config.opensearch_dashboards\.yml.opensearch\.username=admin' \
+    --set 'config.opensearch_dashboards\.yml.opensearch\.password=Str0ngP@ssw0rd#2026' \
+    --wait --timeout 180s
+  echo "    [OpenSearch Dashboards] Done."
+) &
+OS_PID=$!
+
+# --- Prometheus + Grafana ---
+(
+  echo "    [Monitoring] Installing Prometheus + Grafana..."
+  helm upgrade --install monitoring prometheus-community/kube-prometheus-stack -n "$NAMESPACE" \
+    --set grafana.adminPassword=admin \
+    --set grafana.sidecar.datasources.defaultDatasourceEnabled=false \
+    --set grafana.resources.requests.memory=128Mi \
+    --set prometheus.prometheusSpec.resources.requests.memory=256Mi \
+    --set prometheusOperator.resources.requests.memory=128Mi \
+    --wait --timeout 300s
+  echo "    [Monitoring] Done."
+) &
+MON_PID=$!
+
+# --- Loki ---
+(
+  echo "    [Loki] Installing..."
+  helm upgrade --install loki grafana/loki-stack -n "$NAMESPACE" \
+    --set loki.resources.requests.memory=128Mi \
+    --set promtail.enabled=true \
+    --wait --timeout 180s
+  echo "    [Loki] Done."
+) &
+LOKI_PID=$!
+
+# --- Kubernetes Dashboard (optional, non-blocking) ---
+(
+  helm upgrade --install kubernetes-dashboard kubernetes-dashboard/kubernetes-dashboard \
+    -n kubernetes-dashboard --create-namespace \
+    --wait --timeout 120s 2>/dev/null || true
+) &
+DASH_PID=$!
+
+# ── 6. Wait for all parallel installs ────────────────────────────────────────
+echo "==> [6] Waiting for all parallel installs to complete..."
+FAIL=0
+for name_pid in "Postgres:$PG_PID" "Redis:$REDIS_PID" "Kafka:$KAFKA_PID" "LocalStack:$LS_PID" "Keycloak:$KC_PID" "OpenSearch:$OS_PID" "Monitoring:$MON_PID" "Loki:$LOKI_PID" "Dashboard:$DASH_PID"; do
+  NAME="${name_pid%%:*}"
+  PID="${name_pid##*:}"
+  if wait "$PID" 2>/dev/null; then
+    echo "    $NAME: OK"
+  else
+    echo "    $NAME: WARN (may still be starting)"
+    FAIL=$((FAIL + 1))
+  fi
 done
-echo "    Kafka broker ready."
+echo "    All installs complete ($FAIL warnings)."
 
-# ── 8. LocalStack ─────────────────────────────────────────────────────────────
-echo "==> [8/16] Installing LocalStack..."
-helm upgrade --install localstack localstack/localstack -n "$NAMESPACE" \
-  --set image.repository=localstack/localstack \
-  --set image.tag=3.0 \
-  --set resources.requests.memory=512Mi \
-  --set resources.limits.memory=1024Mi \
-  --set livenessProbe.initialDelaySeconds=60 \
-  --set readinessProbe.initialDelaySeconds=30 \
-  --wait --timeout 300s
+# ── 7. Wait for Maven builds and build Docker images ─────────────────────────
+echo "==> [7] Waiting for Maven builds..."
+wait $MVN_GW_PID 2>/dev/null || { echo "    WARN: api-gateway build had issues"; }
+echo "    api-gateway JAR ready."
+wait $MVN_DC_PID 2>/dev/null || { echo "    WARN: devconsole build had issues"; }
+echo "    devconsole JAR ready."
 
-kubectl apply -f infrastructure/kubernetes/localstack-init-job.yaml
+echo "==> [8] Building Docker images and loading into Kind..."
 
-# ── 9. Keycloak ───────────────────────────────────────────────────────────────
-echo "==> [9/16] Installing Keycloak..."
-kubectl apply -f infrastructure/kubernetes/keycloak.yaml
-kubectl rollout status deployment/keycloak -n "$NAMESPACE" --timeout=300s
+# Build both Docker images in parallel
+docker build -t "api-gateway:$IMAGE_TAG" -f services/api-gateway/Dockerfile services/api-gateway &
+DK_GW_PID=$!
+docker build -t "devconsole:$IMAGE_TAG" -f services/devconsole/Dockerfile . &
+DK_DC_PID=$!
+wait $DK_GW_PID $DK_DC_PID
 
-# ── 10. Observability stack ───────────────────────────────────────────────────
-echo "==> [10/16] Installing OpenSearch, Prometheus, Grafana, Loki..."
+# Load both into Kind in parallel
+kind load docker-image "api-gateway:$IMAGE_TAG" --name "$CLUSTER_NAME" &
+KL_GW_PID=$!
+kind load docker-image "devconsole:$IMAGE_TAG" --name "$CLUSTER_NAME" &
+KL_DC_PID=$!
+wait $KL_GW_PID $KL_DC_PID
 
-helm upgrade --install opensearch opensearch/opensearch -n "$NAMESPACE" \
-  --set singleNode=true \
-  --set "extraEnvs[0].name=OPENSEARCH_INITIAL_ADMIN_PASSWORD" \
-  --set "extraEnvs[0].value=Str0ngP@ssw0rd#2026" \
-  --set security.enabled=false \
-  --set opensearchJavaOpts="-Xms256m -Xmx256m" \
-  --set resources.requests.memory=512Mi \
-  --set resources.limits.memory=768Mi \
-  --wait --timeout 300s
+# Deploy both via Helm in parallel
+(
+  helm upgrade --install api-gateway infrastructure/helm/api-gateway \
+    -f infrastructure/helm/api-gateway/values-local.yaml \
+    --set image.tag="$IMAGE_TAG" \
+    -n "$NAMESPACE" \
+    --wait --timeout 120s
+) &
+HLM_GW_PID=$!
 
-helm upgrade --install opensearch-dashboards opensearch/opensearch-dashboards -n "$NAMESPACE" \
-  --set opensearchHosts="https://opensearch-cluster-master:9200" \
-  --set resources.requests.memory=256Mi \
-  --set resources.limits.memory=512Mi \
-  --set-string 'extraEnvs[0].name=DISABLE_SECURITY_DASHBOARDS_PLUGIN' \
-  --set-string 'extraEnvs[0].value=true' \
-  --set 'config.opensearch_dashboards\.yml.opensearch\.ssl\.verificationMode=none' \
-  --set 'config.opensearch_dashboards\.yml.opensearch\.username=admin' \
-  --set 'config.opensearch_dashboards\.yml.opensearch\.password=Str0ngP@ssw0rd#2026' \
-  --wait --timeout 180s
+(
+  helm upgrade --install devconsole infrastructure/helm/devconsole \
+    --set image.tag="$IMAGE_TAG" \
+    -n "$NAMESPACE" \
+    --wait --timeout 120s
+) &
+HLM_DC_PID=$!
 
-helm upgrade --install monitoring prometheus-community/kube-prometheus-stack -n "$NAMESPACE" \
-  --set grafana.adminPassword=admin \
-  --set grafana.sidecar.datasources.defaultDatasourceEnabled=false \
-  --set grafana.resources.requests.memory=128Mi \
-  --set prometheus.prometheusSpec.resources.requests.memory=256Mi \
-  --set prometheusOperator.resources.requests.memory=128Mi \
-  --wait --timeout 300s
+wait $HLM_GW_PID $HLM_DC_PID
+echo "    api-gateway and devconsole deployed."
 
-helm upgrade --install loki grafana/loki-stack -n "$NAMESPACE" \
-  --set loki.resources.requests.memory=128Mi \
-  --set promtail.enabled=true \
-  --wait --timeout 180s
-
-# ── 11. Kubernetes Dashboard ──────────────────────────────────────────────────
-echo "==> [11/16] Installing Kubernetes Dashboard..."
-helm upgrade --install kubernetes-dashboard kubernetes-dashboard/kubernetes-dashboard \
-  -n kubernetes-dashboard --create-namespace \
-  --wait --timeout 120s 2>/dev/null || echo "    (Kubernetes Dashboard install skipped or already installed)"
-
-# ── 12. API Gateway ───────────────────────────────────────────────────────────
-echo "==> [12/16] Building and deploying api-gateway..."
-mvn clean package -pl services/api-gateway -am -DskipTests -q
-
-docker build -t "api-gateway:$IMAGE_TAG" -f services/api-gateway/Dockerfile services/api-gateway
-kind load docker-image "api-gateway:$IMAGE_TAG" --name "$CLUSTER_NAME"
-
-helm upgrade --install api-gateway infrastructure/helm/api-gateway \
-  -f infrastructure/helm/api-gateway/values-local.yaml \
-  --set image.tag="$IMAGE_TAG" \
-  -n "$NAMESPACE" \
-  --wait --timeout 120s
-
-# ── 13. UI Containers (outside Kind, plain Docker) ───────────────────────────
-echo "==> [13/16] Starting UI containers..."
+# ── 9. UI Containers (outside Kind, plain Docker) ────────────────────────────
+echo "==> [9] Starting UI containers..."
 
 # pgAdmin
 docker rm -f pgadmin 2>/dev/null || true
@@ -196,12 +293,9 @@ docker run -d --name kafka-ui \
 
 echo "    UI containers started."
 
-# ── 14. Persistent Volumes ────────────────────────────────────────────────────
-echo "==> [14/16] Applying persistent volume manifests..."
+# ── 10. NodePort services + port-forward watchdog ────────────────────────────
+echo "==> [10] Setting up NodePort services and persistent volumes..."
 kubectl apply -f infrastructure/kubernetes/persistent-volumes.yaml 2>/dev/null || true
-
-# ── 15. NodePort services + port-forward watchdog ────────────────────────────
-echo "==> [15/16] Setting up NodePort services..."
 kubectl apply -f infrastructure/kubernetes/nodeport-services.yaml 2>/dev/null || true
 echo "    NodePort services applied (gateway:18090, prometheus:19090, keycloak:18081, postgres:15432, grafana:13000)"
 
@@ -224,20 +318,22 @@ for i in 1 2 3 4 5 6 7 8 9 10; do
   sleep 3
 done
 
-# ── 15a. PostgreSQL setup (schema + permissions for DevConsole) ───────────────
-echo "==> [15a/16] Setting up PostgreSQL..."
+# ── 11. PostgreSQL setup (schema + permissions for DevConsole) ───────────────
+echo "==> [11] Setting up PostgreSQL..."
 PGPASS=$(kubectl get secret postgres-postgresql -n "$NAMESPACE" -o jsonpath='{.data.postgres-password}' 2>/dev/null | base64 -d 2>/dev/null)
 if [ -n "$PGPASS" ]; then
-  MSYS_NO_PATHCONV=1 kubectl exec -n "$NAMESPACE" postgres-postgresql-0 -- bash -c "PGPASSWORD=$PGPASS psql -U postgres -c \"CREATE SCHEMA IF NOT EXISTS devconsole;\" -d template" 2>/dev/null
+  MSYS_NO_PATHCONV=1 kubectl exec -n "$NAMESPACE" postgres-postgresql-0 -- bash -c "PGPASSWORD=$PGPASS psql -U postgres -d template -c \"CREATE SCHEMA IF NOT EXISTS devconsole;\"" 2>/dev/null
   MSYS_NO_PATHCONV=1 kubectl exec -n "$NAMESPACE" postgres-postgresql-0 -- bash -c "PGPASSWORD=$PGPASS psql -U postgres -c \"ALTER USER template CREATEROLE CREATEDB;\"" 2>/dev/null
-  MSYS_NO_PATHCONV=1 kubectl exec -n "$NAMESPACE" postgres-postgresql-0 -- bash -c "PGPASSWORD=$PGPASS psql -U postgres -c \"GRANT ALL ON SCHEMA devconsole TO template;\"" -d template 2>/dev/null
+  MSYS_NO_PATHCONV=1 kubectl exec -n "$NAMESPACE" postgres-postgresql-0 -- bash -c "PGPASSWORD=$PGPASS psql -U postgres -d template -c \"GRANT ALL ON SCHEMA devconsole TO template;\"" 2>/dev/null
+  MSYS_NO_PATHCONV=1 kubectl exec -n "$NAMESPACE" postgres-postgresql-0 -- bash -c "PGPASSWORD=$PGPASS psql -U postgres -d template -c \"ALTER DEFAULT PRIVILEGES IN SCHEMA devconsole GRANT ALL ON TABLES TO template;\"" 2>/dev/null
+  MSYS_NO_PATHCONV=1 kubectl exec -n "$NAMESPACE" postgres-postgresql-0 -- bash -c "PGPASSWORD=$PGPASS psql -U postgres -d template -c \"ALTER SCHEMA devconsole OWNER TO template;\"" 2>/dev/null
   echo "    Schema + permissions configured"
 else
   echo "    WARNING: Could not get postgres password"
 fi
 
-# ── 15b. Keycloak auto-setup (users, roles, client config) ──────────────────
-echo "==> [15b/16] Configuring Keycloak (users, roles, redirect URIs)..."
+# ── 12. Keycloak auto-setup (users, roles, client config) ──────────────────
+echo "==> [12] Configuring Keycloak (users, roles, redirect URIs)..."
 for i in 1 2 3 4 5 6 7 8 9 10; do
   STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:18090/devconsole/api/health 2>/dev/null)
   if [ "$STATUS" = "200" ]; then break; fi
@@ -279,17 +375,20 @@ else
   echo "    WARNING: Could not get Keycloak admin token. Run setup manually."
 fi
 
-# ── 15c. Redeploy previously deployed services ───────────────────────────────
-echo "==> [15c/16] Redeploying saved services..."
+# ── 13. Redeploy previously deployed services ───────────────────────────────
+echo "==> [13] Redeploying saved services..."
 REDEPLOY_RESULT=$(curl -s -X POST http://localhost:18090/devconsole/api/services/redeploy-all 2>/dev/null)
 echo "    $REDEPLOY_RESULT"
 
-# ── 16. Summary ───────────────────────────────────────────────────────────────
+# ── Summary ───────────────────────────────────────────────────────────────────
+ELAPSED=$(( SECONDS - START_TIME ))
+MINS=$(( ELAPSED / 60 ))
+SECS=$(( ELAPSED % 60 ))
 echo ""
 kubectl get pods -n "$NAMESPACE"
 echo ""
 echo "┌────────────────────────────────────────────────────────────────────────┐"
-echo "│  Infrastructure ready                                                  │"
+echo "│  Infrastructure ready  (${MINS}m ${SECS}s)                                     │"
 echo "├────────────────────────────────────────────────────────────────────────┤"
 echo "│                                                                        │"
 echo "│  Management UIs                                                        │"

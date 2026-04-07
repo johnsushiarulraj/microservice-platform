@@ -164,14 +164,16 @@ public class ScaffoldController {
     }
 
     private void stripDependencies(Path projectDir, String serviceName, Set<String> selectedDeps) throws IOException {
-        // Find the pom.xml in the renamed service directory
-        Path pomPath = projectDir.resolve(serviceName + "/pom.xml");
+        // Find the pom.xml — check root first (flat template), then subdirectory
+        Path pomPath = projectDir.resolve("pom.xml");
+        if (!Files.exists(pomPath)) {
+            pomPath = projectDir.resolve(serviceName + "/pom.xml");
+        }
         if (!Files.exists(pomPath)) {
             // Try finding any pom.xml in subdirectory
             try (var stream = Files.walk(projectDir, 2)) {
                 pomPath = stream
                         .filter(p -> p.getFileName().toString().equals("pom.xml"))
-                        .filter(p -> !p.getParent().equals(projectDir))
                         .findFirst()
                         .orElse(null);
             }
@@ -198,7 +200,7 @@ public class ScaffoldController {
             // Handle "groupId:artifactId" format
             String artId = artifact.contains(":") ? artifact.split(":")[1] : artifact;
             // Remove the entire <dependency>...</dependency> block containing this artifactId
-            String pattern = "(?s)\\s*<dependency>\\s*[^<]*<artifactId>" + artId + "</artifactId>.*?</dependency>";
+            String pattern = "(?s)\\s*<dependency>\\s*(?:(?!</dependency>).)*<artifactId>" + artId + "</artifactId>.*?</dependency>";
             pom = pom.replaceAll(pattern, "");
         }
 
@@ -452,6 +454,8 @@ public class ScaffoldController {
         });
     }
 
+    private static final Set<String> SKIP_DIRS = new HashSet<>(Arrays.asList(".git", "target", ".idea", ".mvn"));
+
     private byte[] createZip(Path dir, String serviceName) throws IOException {
         ByteArrayOutputStream baos = new ByteArrayOutputStream();
         try (ZipOutputStream zos = new ZipOutputStream(baos)) {
@@ -467,6 +471,9 @@ public class ScaffoldController {
 
                 @Override
                 public FileVisitResult preVisitDirectory(Path d, BasicFileAttributes attrs) throws IOException {
+                    if (SKIP_DIRS.contains(d.getFileName().toString())) {
+                        return FileVisitResult.SKIP_SUBTREE;
+                    }
                     if (!d.equals(dir)) {
                         String entryName = serviceName + "/" + dir.relativize(d).toString().replace('\\', '/') + "/";
                         zos.putNextEntry(new ZipEntry(entryName));

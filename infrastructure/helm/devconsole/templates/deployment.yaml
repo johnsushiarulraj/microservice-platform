@@ -24,6 +24,8 @@ spec:
           env:
             - name: SPRING_PROFILES_ACTIVE
               value: "local"
+            - name: JAVA_TOOL_OPTIONS
+              value: "-Xms256m -Xmx512m"
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
           readinessProbe:
