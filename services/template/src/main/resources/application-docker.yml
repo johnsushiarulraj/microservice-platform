@@ -1,0 +1,37 @@
+spring:
+  datasource:
+    url: jdbc:postgresql://postgres:5432/template
+    username: template
+    password: template123
+    driver-class-name: org.postgresql.Driver
+  redis:
+    host: redis
+    port: 6379
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          jwk-set-uri: http://keycloak:8080/auth/realms/template/protocol/openid-connect/certs
+  cloud:
+    stream:
+      kafka:
+        binder:
+          brokers: kafka:9092
+
+server:
+  servlet:
+    context-path: /microservice-template
+
+opensearch:
+  host: opensearch
+  port: 9200
+
+aws:
+  endpoint-override: http://localstack:4566
+  region: us-east-1
+  access-key: test
+  secret-key: test
+  s3:
+    bucket: template-documents
+  sqs:
+    task-queue-url: http://localstack:4566/000000000000/template-tasks

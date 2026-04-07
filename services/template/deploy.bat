@@ -1,19 +1,68 @@
 @echo off
 REM deploy.bat — Build, provision, and deploy in one command.
-REM Usage: deploy.bat 1.0.0
+REM Usage:
+REM   deploy.bat 1.0.0        Deploy to microservice platform
+REM   deploy.bat --compose     Run standalone with Docker Compose
 
 setlocal enabledelayedexpansion
 cd /d "%~dp0"
 
 set SERVICE_NAME=microservice-template
+set GATEWAY=http://localhost:18090
+
+REM ── Docker Compose mode ────────────────────────────────────────────────────
+if "%~1"=="--compose" (
+    echo.
+    echo   Starting %SERVICE_NAME% with Docker Compose...
+    echo.
+
+    echo === [1/3] Building JAR...
+    call mvn clean package -DskipTests -q
+    if errorlevel 1 (echo BUILD FAILED & exit /b 1)
+
+    echo === [2/3] Building and starting containers...
+    docker compose up -d --build
+
+    echo === [3/3] Waiting for service to be healthy...
+    for /L %%i in (1,1,24) do (
+        timeout /t 5 /nobreak >nul
+        curl -s -o nul -w "%%{http_code}" "http://localhost:8081/microservice-template/actuator/health" >%TEMP%\compose_health.txt 2>nul
+        set /p CHEALTH=<%TEMP%\compose_health.txt
+        if "!CHEALTH!"=="200" goto :compose_ready
+        if "!CHEALTH!"=="401" goto :compose_ready
+        echo     Waiting... ^(attempt %%i^)
+    )
+    echo.
+    echo   Service started but not healthy yet. Check logs:
+    echo   docker compose logs -f app
+    exit /b 0
+
+    :compose_ready
+    echo.
+    echo   %SERVICE_NAME% is running (Docker Compose)
+    echo.
+    echo   App:        http://localhost:8081/microservice-template/
+    echo   Swagger:    http://localhost:8081/microservice-template/swagger-ui.html
+    echo   Keycloak:   http://localhost:8080/auth/  (admin / admin)
+    echo   Postgres:   localhost:5432  (template / template123)
+    echo.
+    echo   Logs:   docker compose logs -f app
+    echo   Stop:   docker compose down
+    echo   Clean:  docker compose down -v
+    exit /b 0
+)
+
+REM ── Platform mode ──────────────────────────────────────────────────────────
 set IMAGE_TAG=%1
 if "%IMAGE_TAG%"=="" (
     echo Usage: deploy.bat ^<version^>
-    echo Example: deploy.bat 1.0.0
+    echo        deploy.bat --compose
+    echo.
+    echo Examples:
+    echo   deploy.bat 1.0.0       Deploy to microservice platform
+    echo   deploy.bat --compose   Run standalone with Docker Compose
     exit /b 1
 )
-
-set GATEWAY=http://localhost:18090
 
 REM Check if platform is running
 echo.
@@ -23,7 +72,7 @@ set /p HEALTH=<%TEMP%\healthcheck.txt
 if not "%HEALTH%"=="200" (
     echo.
     echo   ERROR: Platform not reachable at %GATEWAY%
-    echo   Run start-infra.sh first.
+    echo   Run start-infra.sh first, or use: deploy.bat --compose
     exit /b 1
 )
 echo   Platform is running.

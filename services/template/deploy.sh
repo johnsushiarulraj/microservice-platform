@@ -1,16 +1,72 @@
 #!/usr/bin/env bash
 # deploy.sh — Build, provision, and deploy in one command.
-# Usage: ./deploy.sh 1.0.0
+# Usage:
+#   ./deploy.sh 1.0.0          Deploy to microservice platform (Kind cluster)
+#   ./deploy.sh --compose      Run standalone with docker-compose
 set -uo pipefail
 cd "$(dirname "$0")"
 
 SERVICE_NAME="microservice-template"
-IMAGE_TAG="${1:-}"
 GATEWAY="http://localhost:18090"
+
+# ── Docker Compose mode ──────────────────────────────────────────────────────
+if [ "${1:-}" = "--compose" ]; then
+  echo ""
+  echo "  Starting $SERVICE_NAME with Docker Compose..."
+  echo ""
+
+  echo "==> [1/3] Building JAR..."
+  mvn clean package -DskipTests -q || { echo "BUILD FAILED"; exit 1; }
+
+  echo "==> [2/3] Building and starting containers..."
+  docker compose up -d --build
+
+  echo "==> [3/3] Waiting for service to be healthy..."
+  for i in $(seq 1 24); do
+    STATUS=$(curl -s -o /dev/null -w "%{http_code}" "http://localhost:8081/microservice-template/actuator/health" 2>/dev/null)
+    if [ "$STATUS" = "200" ] || [ "$STATUS" = "401" ]; then
+      echo ""
+      echo "┌────────────────────────────────────────────────────────────────┐"
+      echo "│  $SERVICE_NAME is running (Docker Compose)                     │"
+      echo "├────────────────────────────────────────────────────────────────┤"
+      echo "│                                                                │"
+      echo "│  App:       http://localhost:8081/microservice-template/        │"
+      echo "│  Swagger:   http://localhost:8081/microservice-template/swagger-ui.html │"
+      echo "│  Health:    http://localhost:8081/microservice-template/actuator/health  │"
+      echo "│                                                                │"
+      echo "│  Keycloak:  http://localhost:8080/auth/  (admin / admin)       │"
+      echo "│  Postgres:  localhost:5432  (template / template123)           │"
+      echo "│  Redis:     localhost:6379                                     │"
+      echo "│  Kafka:     localhost:9092                                     │"
+      echo "│  LocalStack: http://localhost:4566                             │"
+      echo "│  OpenSearch: http://localhost:9200                             │"
+      echo "│                                                                │"
+      echo "│  Logs:   docker compose logs -f app                           │"
+      echo "│  Stop:   docker compose down                                  │"
+      echo "│  Clean:  docker compose down -v                               │"
+      echo "└────────────────────────────────────────────────────────────────┘"
+      exit 0
+    fi
+    echo "    Waiting... (attempt $i)"
+    sleep 5
+  done
+
+  echo ""
+  echo "  Service started but not healthy yet. Check logs:"
+  echo "  docker compose logs -f app"
+  exit 0
+fi
+
+# ── Platform mode (existing behavior) ────────────────────────────────────────
+IMAGE_TAG="${1:-}"
 
 if [ -z "$IMAGE_TAG" ]; then
   echo "Usage: ./deploy.sh <version>"
-  echo "Example: ./deploy.sh 1.0.0"
+  echo "       ./deploy.sh --compose"
+  echo ""
+  echo "Examples:"
+  echo "  ./deploy.sh 1.0.0       Deploy to microservice platform"
+  echo "  ./deploy.sh --compose   Run standalone with Docker Compose"
   exit 1
 fi
 
@@ -20,7 +76,7 @@ echo "  Checking platform..."
 HEALTH=$(curl -s -o /dev/null -w "%{http_code}" "$GATEWAY/devconsole/api/health" 2>/dev/null)
 if [ "$HEALTH" != "200" ]; then
   echo "  ERROR: Platform not reachable at $GATEWAY"
-  echo "  Run start-infra.sh first."
+  echo "  Run start-infra.sh first, or use: ./deploy.sh --compose"
   exit 1
 fi
 echo "  Platform is running."
