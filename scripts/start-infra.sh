@@ -416,4 +416,79 @@ echo "│  Kafka                 →  localhost:19092                           
 echo "│                                                                        │"
 echo "│  Stop:  ./scripts/stop-infra.sh                                        │"
 echo "│  Clean: ./scripts/stop-infra.sh --clean                                │"
+echo "│                                                                        │"
+echo "│  Credentials: ./CREDENTIALS.txt                                        │"
 echo "└────────────────────────────────────────────────────────────────────────┘"
+
+# ── Write credentials file ────────────────────────────────────────────────────
+cat > "$ROOT_DIR/CREDENTIALS.txt" << 'CREDS'
+╔══════════════════════════════════════════════════════════════════════════╗
+║  MICROSERVICE PLATFORM — CREDENTIALS & ACCESS                          ║
+╚══════════════════════════════════════════════════════════════════════════╝
+
+── DevConsole ──────────────────────────────────────────────────────────────
+  URL:       http://localhost:18090/devconsole/
+  Username:  testuser
+  Password:  password
+
+── Keycloak Admin Console ──────────────────────────────────────────────────
+  URL:       http://localhost:18081/auth/admin/
+  Username:  admin
+  Password:  admin
+
+── Grafana ─────────────────────────────────────────────────────────────────
+  URL:       http://localhost:13000
+  Username:  admin
+  Password:  admin
+
+── Prometheus ──────────────────────────────────────────────────────────────
+  URL:       http://localhost:19090
+  Auth:      (none)
+
+── pgAdmin ─────────────────────────────────────────────────────────────────
+  URL:       http://localhost:15050
+  Email:     admin@admin.com
+  Password:  admin
+
+── OpenSearch Dashboards ───────────────────────────────────────────────────
+  URL:       http://localhost:15601
+  Username:  admin
+  Password:  Str0ngP@ssw0rd#2026
+
+── DynamoDB Admin ──────────────────────────────────────────────────────────
+  URL:       http://localhost:18001
+  Auth:      (none)
+
+── Kafka UI ────────────────────────────────────────────────────────────────
+  URL:       http://localhost:18002
+  Auth:      (none)
+
+── Kubernetes Dashboard ────────────────────────────────────────────────────
+  URL:       https://localhost:13003
+  Auth:      (use token — see kubectl docs)
+
+── PostgreSQL ──────────────────────────────────────────────────────────────
+  Host:      localhost:15432
+  Database:  template
+  Username:  template
+  Password:  template123
+
+── OpenSearch (API) ────────────────────────────────────────────────────────
+  URL:       http://localhost:19200
+  Username:  admin
+  Password:  Str0ngP@ssw0rd#2026
+
+── LocalStack (S3 / SQS / DynamoDB) ───────────────────────────────────────
+  URL:       http://localhost:14566
+  Auth:      (none — use any AWS credentials)
+
+── Kafka ───────────────────────────────────────────────────────────────────
+  Bootstrap: localhost:19092
+  Auth:      (none)
+
+── Redis ───────────────────────────────────────────────────────────────────
+  Host:      localhost:16379
+  Auth:      (none — auth disabled)
+CREDS
+echo ""
+echo "Credentials written to CREDENTIALS.txt"

@@ -28,3 +28,6 @@ data/
 # Port-forward logs
 /tmp/pf-*
 /tmp/cloudflared.log
+
+# Generated credentials file
+CREDENTIALS.txt
