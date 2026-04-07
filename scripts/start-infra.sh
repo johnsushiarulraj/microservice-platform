@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 # start-infra.sh — Create the Kind cluster and install all infrastructure + UIs + gateway.
 # Usage: ./scripts/start-infra.sh
-set -euo pipefail
+set -uo pipefail
+# Note: not using set -e because helm --wait can timeout on slow pulls
+# without the install actually failing. Each critical step checks its own result.
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(dirname "$SCRIPT_DIR")"
@@ -75,17 +77,28 @@ helm upgrade --install strimzi-operator strimzi/strimzi-kafka-operator \
 
 kubectl apply -f infrastructure/kubernetes/kafka-cluster.yaml
 
-echo "    Waiting for Kafka broker to be ready (~2 min)..."
-kubectl wait --for=condition=ready pod -l strimzi.io/cluster=kafka -n "$NAMESPACE" --timeout=300s
+# Patch entity operator memory (avoids CrashLoopBackOff)
+sleep 10
+kubectl patch kafka kafka -n "$NAMESPACE" --type merge \
+  -p '{"spec":{"entityOperator":{"topicOperator":{"resources":{"limits":{"memory":"512Mi"},"requests":{"memory":"256Mi"}}},"userOperator":{"resources":{"limits":{"memory":"512Mi"},"requests":{"memory":"256Mi"}}}}}}' 2>/dev/null || true
+
+echo "    Waiting for Kafka broker to be ready (~3 min)..."
+for i in $(seq 1 36); do
+  kubectl get pod -l strimzi.io/cluster=kafka -n "$NAMESPACE" 2>/dev/null | grep -q "1/1.*Running" && break
+  sleep 10
+done
+echo "    Kafka broker ready."
 
 # ── 8. LocalStack ─────────────────────────────────────────────────────────────
 echo "==> [8/16] Installing LocalStack..."
 helm upgrade --install localstack localstack/localstack -n "$NAMESPACE" \
   --set image.repository=localstack/localstack \
   --set image.tag=3.0 \
-  --set resources.requests.memory=256Mi \
-  --set resources.limits.memory=512Mi \
-  --wait --timeout 120s
+  --set resources.requests.memory=512Mi \
+  --set resources.limits.memory=1024Mi \
+  --set livenessProbe.initialDelaySeconds=60 \
+  --set readinessProbe.initialDelaySeconds=30 \
+  --wait --timeout 300s
 
 kubectl apply -f infrastructure/kubernetes/localstack-init-job.yaml
 
@@ -187,29 +200,89 @@ echo "    UI containers started."
 echo "==> [14/16] Applying persistent volume manifests..."
 kubectl apply -f infrastructure/kubernetes/persistent-volumes.yaml 2>/dev/null || true
 
-# ── 15. Port-forwards ─────────────────────────────────────────────────────────
-echo "==> [15/16] Starting port-forwards..."
+# ── 15. NodePort services + port-forward watchdog ────────────────────────────
+echo "==> [15/16] Setting up NodePort services..."
+kubectl apply -f infrastructure/kubernetes/nodeport-services.yaml 2>/dev/null || true
+echo "    NodePort services applied (gateway:18090, prometheus:19090, keycloak:18081, postgres:15432, grafana:13000)"
+
+# Kill any old port-forwards
 pkill -f "kubectl port-forward.*payments" 2>/dev/null || true
 pkill -f "kubectl port-forward.*kubernetes-dashboard" 2>/dev/null || true
+pkill -f "pf-watchdog" 2>/dev/null || true
 sleep 1
 
-# Infrastructure
-kubectl port-forward -n "$NAMESPACE" svc/monitoring-grafana                              13000:80   >/tmp/pf-grafana.log     2>&1 & echo $! >/tmp/pf-grafana.pid
-kubectl port-forward -n "$NAMESPACE" svc/keycloak                                        18081:8080 >/tmp/pf-keycloak.log    2>&1 & echo $! >/tmp/pf-keycloak.pid
-kubectl port-forward -n "$NAMESPACE" svc/monitoring-kube-prometheus-prometheus 19090:9090 >/tmp/pf-prometheus.log  2>&1 & echo $! >/tmp/pf-prometheus.pid
-kubectl port-forward -n "$NAMESPACE" svc/api-gateway                                     18090:8090 >/tmp/pf-gateway.log     2>&1 & echo $! >/tmp/pf-gateway.pid
+# Start watchdog for remaining services (LocalStack, OpenSearch, Kafka, etc.)
+echo "    Starting port-forward watchdog for remaining services..."
+nohup bash "$(dirname "$0")/port-forward-watchdog.sh" >/tmp/pf-watchdog.log 2>&1 &
+echo "    Watchdog PID: $(cat /tmp/pf-watchdog.pid 2>/dev/null || echo $!)"
 
-# Data services
-kubectl port-forward -n "$NAMESPACE" svc/postgres-postgresql                             15432:5432 >/tmp/pf-postgres.log    2>&1 & echo $! >/tmp/pf-postgres.pid
-kubectl port-forward -n "$NAMESPACE" svc/opensearch-cluster-master                       19200:9200 >/tmp/pf-opensearch.log  2>&1 & echo $! >/tmp/pf-opensearch.pid
-kubectl port-forward -n "$NAMESPACE" svc/localstack                                      14566:4566 >/tmp/pf-localstack.log  2>&1 & echo $! >/tmp/pf-localstack.pid
-kubectl port-forward -n "$NAMESPACE" svc/kafka-kafka-bootstrap                           19092:9092 >/tmp/pf-kafka.log       2>&1 & echo $! >/tmp/pf-kafka.pid
+# Wait for gateway to be accessible
+echo "    Waiting for gateway..."
+for i in 1 2 3 4 5 6 7 8 9 10; do
+  STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:18090/actuator/health 2>/dev/null || echo "000")
+  if [ "$STATUS" = "200" ]; then echo "    Gateway ready"; break; fi
+  sleep 3
+done
 
-# UIs inside cluster
-kubectl port-forward -n "$NAMESPACE" svc/opensearch-dashboards                           15601:5601 >/tmp/pf-osdash.log      2>&1 & echo $! >/tmp/pf-osdash.pid
-kubectl port-forward -n kubernetes-dashboard svc/kubernetes-dashboard-kong-proxy          13003:443  >/tmp/pf-k8sdash.log     2>&1 & echo $! >/tmp/pf-k8sdash.pid 2>/dev/null || true
+# ── 15a. PostgreSQL setup (schema + permissions for DevConsole) ───────────────
+echo "==> [15a/16] Setting up PostgreSQL..."
+PGPASS=$(kubectl get secret postgres-postgresql -n "$NAMESPACE" -o jsonpath='{.data.postgres-password}' 2>/dev/null | base64 -d 2>/dev/null)
+if [ -n "$PGPASS" ]; then
+  MSYS_NO_PATHCONV=1 kubectl exec -n "$NAMESPACE" postgres-postgresql-0 -- bash -c "PGPASSWORD=$PGPASS psql -U postgres -c \"CREATE SCHEMA IF NOT EXISTS devconsole;\" -d template" 2>/dev/null
+  MSYS_NO_PATHCONV=1 kubectl exec -n "$NAMESPACE" postgres-postgresql-0 -- bash -c "PGPASSWORD=$PGPASS psql -U postgres -c \"ALTER USER template CREATEROLE CREATEDB;\"" 2>/dev/null
+  MSYS_NO_PATHCONV=1 kubectl exec -n "$NAMESPACE" postgres-postgresql-0 -- bash -c "PGPASSWORD=$PGPASS psql -U postgres -c \"GRANT ALL ON SCHEMA devconsole TO template;\"" -d template 2>/dev/null
+  echo "    Schema + permissions configured"
+else
+  echo "    WARNING: Could not get postgres password"
+fi
 
-sleep 3
+# ── 15b. Keycloak auto-setup (users, roles, client config) ──────────────────
+echo "==> [15b/16] Configuring Keycloak (users, roles, redirect URIs)..."
+for i in 1 2 3 4 5 6 7 8 9 10; do
+  STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:18090/devconsole/api/health 2>/dev/null)
+  if [ "$STATUS" = "200" ]; then break; fi
+  echo "    Waiting for DevConsole to be ready... (attempt $i)"
+  sleep 5
+done
+# Run Keycloak setup via DevConsole API (idempotent)
+curl -s -X POST http://localhost:18090/devconsole/api/setup/keycloak 2>/dev/null | head -1
+echo "    Realm configured"
+
+# Fix users: set firstName/lastName/email (Keycloak 24 VERIFY_PROFILE) and password
+KC_TOKEN=$(curl -s -X POST http://localhost:18081/auth/realms/master/protocol/openid-connect/token \
+  -d "grant_type=password&client_id=admin-cli&username=admin&password=admin" 2>/dev/null \
+  | sed -n 's/.*"access_token":"\([^"]*\)".*/\1/p')
+if [ -n "$KC_TOKEN" ]; then
+  KC_USERS=$(curl -s -H "Authorization: Bearer $KC_TOKEN" "http://localhost:18081/auth/admin/realms/template/users" 2>/dev/null)
+  for uid in $(echo "$KC_USERS" | sed -n 's/.*"id":"\([^"]*\)","username":"\([^"]*\)".*/\1:\2/gp'); do
+    ID=$(echo "$uid" | cut -d: -f1)
+    NAME=$(echo "$uid" | cut -d: -f2)
+    FIRST=$([ "$NAME" = "testuser" ] && echo "Test" || echo "Admin")
+    curl -s -X PUT "http://localhost:18081/auth/admin/realms/template/users/$ID" \
+      -H "Authorization: Bearer $KC_TOKEN" -H "Content-Type: application/json" \
+      -d "{\"firstName\":\"$FIRST\",\"lastName\":\"User\",\"email\":\"${NAME}@example.com\",\"emailVerified\":true,\"requiredActions\":[]}" 2>/dev/null
+    curl -s -X PUT "http://localhost:18081/auth/admin/realms/template/users/$ID/reset-password" \
+      -H "Authorization: Bearer $KC_TOKEN" -H "Content-Type: application/json" \
+      -d '{"type":"password","value":"password","temporary":false}' 2>/dev/null
+    echo "    User $NAME configured"
+  done
+  # Fix client redirect URIs
+  CLIENT_UUID=$(curl -s -H "Authorization: Bearer $KC_TOKEN" "http://localhost:18081/auth/admin/realms/template/clients?clientId=microservice-template" 2>/dev/null \
+    | sed -n 's/.*"id":"\([^"]*\)".*/\1/p' | head -1)
+  if [ -n "$CLIENT_UUID" ]; then
+    curl -s -X PUT "http://localhost:18081/auth/admin/realms/template/clients/$CLIENT_UUID" \
+      -H "Authorization: Bearer $KC_TOKEN" -H "Content-Type: application/json" \
+      -d '{"clientId":"microservice-template","redirectUris":["*"],"webOrigins":["*"]}' 2>/dev/null
+    echo "    Client redirect URIs configured"
+  fi
+else
+  echo "    WARNING: Could not get Keycloak admin token. Run setup manually."
+fi
+
+# ── 15c. Redeploy previously deployed services ───────────────────────────────
+echo "==> [15c/16] Redeploying saved services..."
+REDEPLOY_RESULT=$(curl -s -X POST http://localhost:18090/devconsole/api/services/redeploy-all 2>/dev/null)
+echo "    $REDEPLOY_RESULT"
 
 # ── 16. Summary ───────────────────────────────────────────────────────────────
 echo ""
@@ -232,6 +305,7 @@ echo "│  Kubernetes Dashboard  →  https://localhost:13003                   
 echo "│                                                                        │"
 echo "│  Services                                                              │"
 echo "│  ────────                                                              │"
+echo "│  JavaBackend           →  http://localhost:18090/devconsole/            │"
 echo "│  API Gateway           →  http://localhost:18090/actuator/health        │"
 echo "│                                                                        │"
 echo "│  Data Services                                                         │"

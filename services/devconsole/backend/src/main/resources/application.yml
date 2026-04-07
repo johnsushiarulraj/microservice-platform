@@ -44,6 +44,8 @@ app:
     org: johnsushiarulraj
   kubernetes:
     namespace: payments
+  gateway:
+    internal-url: http://api-gateway.payments.svc.cluster.local:8090
 
 management:
   endpoints:

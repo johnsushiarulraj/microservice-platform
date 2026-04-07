@@ -1,41 +1,32 @@
 #!/usr/bin/env bash
-# build.sh — Build the microservice JAR + Docker image + push to registry.
-#
-# Usage:
-#   ./scripts/build.sh 1.0.0              # build + push to configured registry
-#   ./scripts/build.sh 1.0.0 ghcr.io/org  # build + push to custom registry
-#   ./scripts/build.sh                     # build only (local tag, no push)
+# build.sh — Build the microservice JAR + Docker image.
+# Usage: ./scripts/build.sh 1.0.0
 set -euo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-ROOT_DIR="$(dirname "$SCRIPT_DIR")"
+cd "$(dirname "$0")/.."
+
+SERVICE_NAME="microservice-template"
 IMAGE_TAG="${1:-local}"
 
-# Read config
-if [ -f "$ROOT_DIR/config/build.conf" ]; then
-  source "$ROOT_DIR/config/build.conf"
-fi
+echo ""
+echo "  Service: $SERVICE_NAME"
+echo "  Tag:     $IMAGE_TAG"
+echo ""
 
-REGISTRY="${2:-${REGISTRY:-}}"
-SERVICE_NAME="${SERVICE_NAME:-microservice-template}"
+echo "==> [1/2] Building JAR..."
+mvn clean package -DskipTests -q
+echo "    target/$SERVICE_NAME-*.jar"
 
-cd "$ROOT_DIR"
-
-echo "==> [1/3] Building JAR (skipping tests)..."
-mvn clean package -pl "$SERVICE_NAME" -am -DskipTests -q
-echo "    $SERVICE_NAME/target/$SERVICE_NAME-*.jar"
-
-echo "==> [2/3] Building Docker image: $SERVICE_NAME:$IMAGE_TAG"
+echo "==> [2/3] Building Docker image..."
 docker build -t "$SERVICE_NAME:$IMAGE_TAG" .
 
-if [[ -n "$REGISTRY" ]]; then
-  FULL_IMAGE="$REGISTRY/$SERVICE_NAME:$IMAGE_TAG"
-  echo "==> [3/3] Pushing to $FULL_IMAGE ..."
-  docker tag "$SERVICE_NAME:$IMAGE_TAG" "$FULL_IMAGE"
-  docker push "$FULL_IMAGE"
-  echo "✓ Pushed $FULL_IMAGE"
+echo "==> [3/3] Loading into Kind cluster..."
+if kind load docker-image "$SERVICE_NAME:$IMAGE_TAG" --name template-local 2>/dev/null; then
+  echo "    Loaded into Kind"
 else
-  echo "==> [3/3] Skipping push (no registry configured)"
-  echo "✓ Image built: $SERVICE_NAME:$IMAGE_TAG"
-  echo "  To push: ./scripts/build.sh $IMAGE_TAG <your-registry>"
+  echo "    Kind cluster not found — load manually: kind load docker-image $SERVICE_NAME:$IMAGE_TAG --name template-local"
 fi
+
+echo ""
+echo "Done: $SERVICE_NAME:$IMAGE_TAG"
+echo "Deploy: DevConsole → Services → Deploy → name: $SERVICE_NAME, tag: $IMAGE_TAG"

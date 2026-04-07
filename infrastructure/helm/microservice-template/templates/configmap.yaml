@@ -5,4 +5,4 @@ metadata:
   namespace: {{ .Release.Namespace }}
 data:
   SPRING_PROFILES_ACTIVE: {{ .Values.env.SPRING_PROFILES_ACTIVE | quote }}
-  SERVER_SERVLET_CONTEXT_PATH: "/template"
+  SERVER_SERVLET_CONTEXT_PATH: {{ .Values.env.SERVER_SERVLET_CONTEXT_PATH | default "/template" | quote }}

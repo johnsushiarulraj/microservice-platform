@@ -1783,24 +1783,84 @@ public Map<String, Object> me(@AuthenticationPrincipal Jwt jwt) {
     section: 'Security',
     title: 'Roles & Permissions',
     content: [
+      { type: 'text', value: 'Your service authenticates users via JWT tokens issued by Keycloak. Each token contains the user\'s roles. You can restrict endpoints to specific roles using Spring Security annotations.' },
+      { type: 'heading', value: 'Step 1: Enable Method Security' },
+      { type: 'text', value: 'Add @EnableMethodSecurity to your security config. This tells Spring to check @PreAuthorize annotations on your controllers.' },
+      { type: 'code', lang: 'java', value: `@Configuration
+@EnableMethodSecurity  // <-- enables @PreAuthorize
+public class SecurityConfig {
+
+    @Bean
+    public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
+        http
+            .csrf().disable()
+            .authorizeHttpRequests(auth -> auth
+                .requestMatchers("/actuator/**").permitAll()  // health checks are public
+                .anyRequest().authenticated()                  // everything else needs JWT
+            )
+            .oauth2ResourceServer(oauth2 -> oauth2.jwt());     // validate JWT from Keycloak
+        return http.build();
+    }
+}` },
+      { type: 'heading', value: 'Step 2: Create Roles in Keycloak' },
+      { type: 'text', value: 'Open Keycloak Admin (http://localhost:18081/auth/admin/) → Realm "template" → Realm Roles → Add Role. Create roles like TEMPLATE_USER and TEMPLATE_ADMIN. Then assign them to users under Users → Role Mappings.' },
+      { type: 'tip', value: 'The template already creates TEMPLATE_USER and TEMPLATE_ADMIN roles. testuser has TEMPLATE_USER, adminuser has both.' },
+      { type: 'heading', value: 'Step 3: Secure Your Endpoints' },
+      { type: 'text', value: 'Use @PreAuthorize on controller methods. Spring reads the roles from the JWT token automatically.' },
       { type: 'code', lang: 'java', value: `@RestController
+@RequestMapping("/api/v1/payments")
 public class PaymentController {
 
-    @GetMapping("/api/v1/payments")
-    public List<Payment> list() { ... }  // any authenticated user
+    // Any authenticated user can list payments
+    @GetMapping
+    public List<Payment> list() {
+        return paymentService.findAll();
+    }
 
-    @PreAuthorize("hasRole('ADMIN')")
-    @DeleteMapping("/api/v1/payments/{id}")
-    public void delete(@PathVariable String id) { ... }  // admin only
+    // Only users with TEMPLATE_ADMIN role can delete
+    @PreAuthorize("hasRole('TEMPLATE_ADMIN')")
+    @DeleteMapping("/{id}")
+    public void delete(@PathVariable String id) {
+        paymentService.delete(id);
+    }
 
-    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
-    @PostMapping("/api/v1/payments/{id}/approve")
-    public Payment approve(@PathVariable String id) { ... }
+    // Multiple roles: ADMIN or MANAGER can approve
+    @PreAuthorize("hasAnyRole('TEMPLATE_ADMIN', 'TEMPLATE_MANAGER')")
+    @PostMapping("/{id}/approve")
+    public Payment approve(@PathVariable String id) {
+        return paymentService.approve(id);
+    }
 
-    @PreAuthorize("#userId == authentication.name or hasRole('ADMIN')")
-    @GetMapping("/api/v1/users/{userId}/payments")
-    public List<Payment> userPayments(@PathVariable String userId) { ... }
+    // Owner check: user can only see their own payments, unless admin
+    @PreAuthorize("#userId == authentication.name or hasRole('TEMPLATE_ADMIN')")
+    @GetMapping("/user/{userId}")
+    public List<Payment> userPayments(@PathVariable String userId) {
+        return paymentService.findByUser(userId);
+    }
 }` },
+      { type: 'text', value: 'When a user without the required role tries to access a secured endpoint, Spring returns 403 Forbidden automatically.' },
+      { type: 'heading', value: 'Step 4: Test It' },
+      { type: 'text', value: 'Get a token for testuser (TEMPLATE_USER only) and try to delete — it should fail with 403. Then get a token for adminuser (has TEMPLATE_ADMIN) — it should succeed.' },
+      { type: 'code', lang: 'bash', value: `# Get token for testuser (TEMPLATE_USER role)
+TOKEN=$(curl -s -X POST http://localhost:18090/auth/realms/template/protocol/openid-connect/token \\
+  -d "grant_type=password&client_id=microservice-template&client_secret=template-secret&username=testuser&password=password" \\
+  | jq -r .access_token)
+
+# Try to delete — should return 403 Forbidden
+curl -X DELETE http://localhost:18090/payment/api/v1/payments/123 \\
+  -H "Authorization: Bearer $TOKEN"
+# → 403 Forbidden
+
+# Get token for adminuser (has TEMPLATE_ADMIN)
+ADMIN_TOKEN=$(curl -s -X POST http://localhost:18090/auth/realms/template/protocol/openid-connect/token \\
+  -d "grant_type=password&client_id=microservice-template&client_secret=template-secret&username=adminuser&password=password" \\
+  | jq -r .access_token)
+
+# Try to delete — should succeed
+curl -X DELETE http://localhost:18090/payment/api/v1/payments/123 \\
+  -H "Authorization: Bearer $ADMIN_TOKEN"
+# → 200 OK` },
+      { type: 'warning', value: 'Keycloak puts roles inside realm_access.roles in the JWT. Spring Security maps them automatically when you use oauth2ResourceServer().jwt(). The role names in @PreAuthorize must match exactly (case-sensitive).' },
     ]
   },
   {

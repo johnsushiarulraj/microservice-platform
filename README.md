@@ -1,15 +1,29 @@
-# Microservice Platform
+<div align="center">
 
-Local microservice development environment with everything you need — infrastructure, gateway, monitoring, and a management console.
+# JavaBackend
 
-## Prerequisites
+**Your local production backend.**
 
-- Docker Desktop
-- Java 11+
-- Maven 3.8+
-- kubectl
-- Helm
-- Kind
+A complete microservice platform running on your machine. PostgreSQL, Kafka, Redis, S3, OpenSearch, Keycloak, Grafana — all wired together in Kubernetes. Just deploy your service.
+
+[Create a Service](http://localhost:18090/devconsole/create) · [Tutorial](http://localhost:18090/devconsole/tutorial) · [Documentation](http://localhost:18090/devconsole/learn)
+
+</div>
+
+---
+
+## Why?
+
+In companies, infrastructure teams wire everything together. You just write your service and deploy.
+
+**JavaBackend gives you that same setup locally.**
+
+- No months of infrastructure configuration
+- No Docker Compose files to maintain
+- No "works on my machine" — it runs in Kubernetes, just like production
+- Create a service from the template, build, deploy. Everything else is ready.
+
+Think **LocalStack** meets **Spring Initializr** — but for the full backend stack.
 
 ## Quick Start
 
@@ -19,97 +33,159 @@ cd microservice-platform
 ./scripts/start-infra.sh
 ```
 
-Open http://localhost:13001 — everything is ready.
+Open **http://localhost:18090/devconsole/** — your platform is ready.
+
+### Create Your First Service
+
+1. Go to [Create Service](http://localhost:18090/devconsole/create)
+2. Enter a name (e.g., `order-service`)
+3. Select dependencies (PostgreSQL, Kafka, Redis, etc.)
+4. Download the ZIP
+5. Extract, build, deploy:
+
+```bash
+unzip order-service.zip && cd order-service
+./scripts/build.sh 1.0.0
+# Sign in to DevConsole → Services → Deploy
+```
+
+Your service is live in Kubernetes — connected to all infrastructure.
 
 ## What's Included
 
+### Infrastructure (runs in a 3-node Kind cluster)
+
+| Service | Purpose | Port |
+|---------|---------|------|
+| **PostgreSQL** | Relational database | `localhost:15432` |
+| **Redis** | In-memory cache | cluster internal |
+| **Kafka** (Strimzi) | Event streaming | `localhost:19092` |
+| **S3 / SQS / DynamoDB** (LocalStack) | AWS services | `localhost:14566` |
+| **OpenSearch** | Full-text search | `localhost:19200` |
+| **Keycloak** | Auth & SSO (OAuth2/JWT) | `localhost:18081` |
+| **Spring Cloud Gateway** | API routing, rate limiting, circuit breaking | `localhost:18090` |
+| **Prometheus + Grafana** | Metrics & dashboards | `localhost:13000` |
+| **Loki** | Log aggregation | cluster internal |
+
 ### Management UIs
 
-| UI                    | URL                          | Credentials           |
-|-----------------------|------------------------------|-----------------------|
-| DevConsole            | http://localhost:13001        |                       |
-| Keycloak              | http://localhost:18081        | admin / admin         |
-| Grafana               | http://localhost:13000        | admin / admin         |
-| Prometheus            | http://localhost:19090        |                       |
-| pgAdmin               | http://localhost:15050        | admin@admin.com / admin |
-| OpenSearch Dashboards | http://localhost:15601        |                       |
-| DynamoDB Admin        | http://localhost:18001        |                       |
-| Kafka UI              | http://localhost:18002        |                       |
-| Kubernetes Dashboard  | https://localhost:13003       |                       |
+| UI | URL | Credentials |
+|----|-----|-------------|
+| **JavaBackend** (DevConsole) | http://localhost:18090/devconsole/ | testuser / password |
+| Keycloak Admin | http://localhost:18081 | admin / admin |
+| Grafana | http://localhost:13000 | admin / admin |
+| Prometheus | http://localhost:19090 | — |
+| pgAdmin | http://localhost:15050 | admin@admin.com / admin |
+| Kafka UI | http://localhost:18002 | — |
+| OpenSearch Dashboards | http://localhost:15601 | — |
+| DynamoDB Admin | http://localhost:18001 | — |
 
-### Data Services
+### Service Template
 
-| Service                    | Connection                                |
-|----------------------------|-------------------------------------------|
-| PostgreSQL                 | localhost:15432 (template / template123)   |
-| Redis                      | Inside cluster only (redis-master:6379)   |
-| Kafka                      | localhost:19092                            |
-| LocalStack (S3, SQS, DDB) | http://localhost:14566                     |
-| OpenSearch                 | http://localhost:19200                     |
+Every generated service includes:
 
-### Infrastructure
+- **Spring Boot 2.7** with selected dependencies pre-configured
+- **Liquibase** database migrations
+- **Kafka** consumers/producers (Spring Cloud Stream)
+- **AWS SDK v2** for S3, SQS, DynamoDB (via LocalStack)
+- **OpenSearch** client for full-text search
+- **Keycloak** OAuth2 JWT authentication
+- **Resilience4j** circuit breaker, retry, rate limiting
+- **Prometheus** metrics + health checks
+- **JaCoCo** code coverage
+- **Unit tests + Integration tests** (Testcontainers)
+- **Dockerfile + build.sh** — build and push with one command
+- **rename.sh** — full rename automation (package, classes, topics, DB)
 
-- Spring Cloud Gateway (auth, rate limiting, tracing, circuit breaker)
-- Keycloak (OAuth2 / JWT authentication)
-- PostgreSQL + Redis + Kafka + OpenSearch
-- LocalStack (S3, SQS, DynamoDB)
-- Prometheus + Grafana + Loki (observability)
-- NGINX Ingress Controller
+## Prerequisites
+
+| Tool | Version | Install |
+|------|---------|---------|
+| Docker Desktop | Latest | [docker.com](https://www.docker.com/products/docker-desktop/) |
+| Kind | v0.20+ | `brew install kind` / `choco install kind` |
+| kubectl | v1.27+ | Comes with Docker Desktop |
+| Helm | v3.12+ | `brew install helm` / `choco install kubernetes-helm` |
+| Java | 11+ | `brew install openjdk@11` |
+| Maven | 3.8+ | `brew install maven` |
+
+> **Memory**: Allocate at least **8GB RAM** to Docker Desktop. 10GB recommended.
 
 ## Scripts
 
-| Script                          | What it does                          |
-|---------------------------------|---------------------------------------|
-| `./scripts/start-infra.sh`     | Start everything                      |
-| `./scripts/stop-infra.sh`      | Stop everything (data preserved)      |
-| `./scripts/stop-infra.sh --clean` | Stop + wipe all data               |
-
-## Create Your First Service
-
-1. Open http://localhost:13001 (DevConsole)
-2. Click "Create Service"
-3. Pick a name, choose dependencies, configure
-4. Download ZIP
-5. Extract, open in your IDE
-6. Write your code
-7. Run: `./build.sh 1.0.0`
-8. Back in DevConsole — Deploy — pick your image tag
-9. Your service is live
-
-## Repo Structure
-
-```
-microservice-platform/
-├── services/
-│   ├── devconsole/          ← Management UI (Spring Boot + React)
-│   ├── api-gateway/         ← Spring Cloud Gateway
-│   └── template/            ← Source template for scaffolding
-├── infrastructure/
-│   ├── helm/                ← Helm charts
-│   ├── kubernetes/          ← K8s manifests
-│   ├── kind/                ← Kind cluster config
-│   └── config/              ← Registry config
-├── scripts/
-│   ├── start-infra.sh
-│   └── stop-infra.sh
-├── data/                    ← Persistent data (gitignored)
-├── PLAN.md                  ← Full build plan
-├── PROGRESS.md              ← Build progress tracking
-└── README.md
-```
+| Script | What it does |
+|--------|-------------|
+| `./scripts/start-infra.sh` | Create Kind cluster + install all infrastructure + start UIs |
+| `./scripts/stop-infra.sh` | Stop everything (data preserved in `./data/`) |
+| `./scripts/stop-infra.sh --clean` | Stop + wipe all data (fresh start) |
 
 ## Data Persistence
-
-Data survives cluster restarts:
 
 ```bash
 ./scripts/stop-infra.sh          # data saved in ./data/
 ./scripts/start-infra.sh         # picks up where you left off
+
+./scripts/stop-infra.sh --clean  # wipes ./data/ — fresh start
 ```
 
-Fresh start:
+## Project Structure
 
-```bash
-./scripts/stop-infra.sh --clean  # wipes ./data/
-./scripts/start-infra.sh         # brand new
 ```
+microservice-platform/
+├── services/
+│   ├── devconsole/           # Management console (Spring Boot + React)
+│   │   ├── backend/          # REST APIs, Keycloak setup, scaffold
+│   │   └── frontend/         # React + Tailwind CSS
+│   ├── api-gateway/          # Spring Cloud Gateway
+│   └── template/             # Service template + rename script
+├── infrastructure/
+│   ├── helm/                 # Helm charts
+│   ├── kubernetes/           # K8s manifests (Keycloak, Kafka, etc.)
+│   └── kind/                 # Kind cluster config
+├── scripts/
+│   ├── start-infra.sh        # Start everything
+│   └── stop-infra.sh         # Stop everything
+└── data/                     # Persistent data (gitignored)
+```
+
+## Developer Workflow
+
+```
+1. Start platform        →  ./scripts/start-infra.sh
+2. Create service         →  DevConsole → Create → Download ZIP
+3. Write code             →  Open in IDE, implement your logic
+4. Build & push image     →  ./scripts/build.sh 1.0.0
+5. Deploy                 →  DevConsole → Services → Deploy
+6. Test                   →  http://localhost:18090/<your-service>/api/...
+7. Monitor                →  Grafana → Explore → Loki/Prometheus
+8. Iterate                →  Change code → build.sh → redeploy
+```
+
+## Troubleshooting
+
+| Problem | Fix |
+|---------|-----|
+| Port-forwards die | `kubectl port-forward -n payments svc/api-gateway 18090:8090` |
+| LocalStack restarts | Increase Docker memory to 10GB+ |
+| Kafka entity operator CrashLoop | `kubectl patch kafka kafka -n payments --type merge -p '{"spec":{"entityOperator":{"topicOperator":{"resources":{"limits":{"memory":"512Mi"}}}}}}'` |
+| Login returns "Account not fully set up" | Keycloak users need firstName/lastName/email — run the setup API |
+
+## Contributing
+
+Contributions are welcome! This project is designed to help backend developers learn microservices with a real, production-like setup.
+
+1. Fork the repo
+2. Create a feature branch
+3. Make your changes
+4. Submit a pull request
+
+## License
+
+MIT
+
+---
+
+<div align="center">
+
+Built by [@johnsushiarulraj](https://github.com/johnsushiarulraj)
+
+</div>

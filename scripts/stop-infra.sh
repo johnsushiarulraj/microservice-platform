@@ -11,10 +11,11 @@ CLUSTER_NAME="template-local"
 
 cd "$ROOT_DIR"
 
-# ── Kill all port-forwards ────────────────────────────────────────────────────
-echo "==> Stopping port-forwards..."
+# ── Kill watchdog + port-forwards ─────────────────────────────────────────────
+echo "==> Stopping watchdog and port-forwards..."
+pkill -f "port-forward-watchdog" 2>/dev/null || true
 pkill -f "kubectl port-forward.*payments" 2>/dev/null || true
-rm -f /tmp/pf-*.pid /tmp/pf-*.log
+rm -f /tmp/pf-*.pid /tmp/pf-*.log /tmp/pf-watchdog.log
 
 # ── Stop UI containers (running outside Kind) ────────────────────────────────
 echo "==> Stopping UI containers..."

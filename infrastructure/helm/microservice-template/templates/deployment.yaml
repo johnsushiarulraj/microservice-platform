@@ -16,7 +16,7 @@ spec:
         app: {{ include "microservice-template.fullname" . }}
       annotations:
         prometheus.io/scrape: "true"
-        prometheus.io/path: "/template/actuator/prometheus"
+        prometheus.io/path: "{{ .Values.env.SERVER_SERVLET_CONTEXT_PATH | default "/template" }}/actuator/prometheus"
         prometheus.io/port: "8080"
     spec:
       containers:
@@ -32,13 +32,13 @@ spec:
                 name: {{ include "microservice-template.fullname" . }}-secret
           readinessProbe:
             httpGet:
-              path: /template/actuator/health
+              path: {{ .Values.env.SERVER_SERVLET_CONTEXT_PATH | default "/template" }}/actuator/health
               port: 8080
             initialDelaySeconds: 30
             periodSeconds: 10
           livenessProbe:
             httpGet:
-              path: /template/actuator/health
+              path: {{ .Values.env.SERVER_SERVLET_CONTEXT_PATH | default "/template" }}/actuator/health
               port: 8080
             initialDelaySeconds: 60
             periodSeconds: 30

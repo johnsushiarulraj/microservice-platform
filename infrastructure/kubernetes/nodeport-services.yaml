@@ -1,0 +1,81 @@
+# NodePort services — expose key services directly via Kind extraPortMappings
+# This eliminates the need for kubectl port-forward (which dies frequently)
+# Kind maps: hostPort → containerPort (nodePort) → service
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: api-gateway-nodeport
+  namespace: payments
+spec:
+  type: NodePort
+  selector:
+    app: api-gateway
+  ports:
+    - port: 8090
+      targetPort: 8090
+      nodePort: 30090
+      protocol: TCP
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: prometheus-nodeport
+  namespace: payments
+spec:
+  type: NodePort
+  selector:
+    app.kubernetes.io/name: prometheus
+    app.kubernetes.io/instance: monitoring-kube-prometheus-prometheus
+  ports:
+    - port: 9090
+      targetPort: 9090
+      nodePort: 30091
+      protocol: TCP
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: keycloak-nodeport
+  namespace: payments
+spec:
+  type: NodePort
+  selector:
+    app: keycloak
+  ports:
+    - port: 8080
+      targetPort: 8080
+      nodePort: 30081
+      protocol: TCP
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres-nodeport
+  namespace: payments
+spec:
+  type: NodePort
+  selector:
+    app.kubernetes.io/instance: postgres
+    app.kubernetes.io/name: postgresql
+  ports:
+    - port: 5432
+      targetPort: 5432
+      nodePort: 30432
+      protocol: TCP
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: grafana-nodeport
+  namespace: payments
+spec:
+  type: NodePort
+  selector:
+    app.kubernetes.io/name: grafana
+    app.kubernetes.io/instance: monitoring
+  ports:
+    - port: 80
+      targetPort: 3000
+      nodePort: 30030
+      protocol: TCP

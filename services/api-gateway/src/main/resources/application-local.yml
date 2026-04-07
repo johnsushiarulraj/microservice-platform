@@ -80,13 +80,12 @@ spring:
                 statuses: BAD_GATEWAY,SERVICE_UNAVAILABLE,GATEWAY_TIMEOUT
                 methods: GET
 
-        # ── PROTECTED: Grafana (sub-path configured) ──────────────────────
+        # ── PROTECTED: Grafana (serve_from_sub_path=true, no StripPrefix) ─
         - id: grafana
           uri: http://monitoring-grafana.payments.svc.cluster.local:80
           predicates:
             - Path=/grafana/**
           filters:
-            - StripPrefix=1
             - name: CircuitBreaker
               args:
                 name: grafana-cb
@@ -111,6 +110,16 @@ spring:
             - Path=/pgadmin/**
           filters:
             - StripPrefix=1
+            - name: CircuitBreaker
+              args:
+                name: pgadmin-cb
+                fallbackUri: forward:/fallback/pgadmin
+        # Catch pgAdmin redirects (e.g., /browser/ → /pgadmin/browser/)
+        - id: pgadmin-redirects
+          uri: http://pgadmin.payments.svc.cluster.local:80
+          predicates:
+            - Path=/browser/**,/misc/**,/static/**,/login/**
+          filters:
             - name: CircuitBreaker
               args:
                 name: pgadmin-cb
@@ -158,7 +167,7 @@ spring:
           predicates:
             - Path=/keycloak-admin/**
           filters:
-            - StripPrefix=1
+            - RewritePath=/keycloak-admin(?<segment>/?.*), /auth/admin${segment}
             - name: CircuitBreaker
               args:
                 name: keycloak-admin-cb

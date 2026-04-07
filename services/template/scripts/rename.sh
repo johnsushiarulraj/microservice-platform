@@ -39,8 +39,8 @@ echo "==> [1/5] Replacing in file contents..."
 
 # Service name (artifact ID, image name, consumer group, etc.)
 find . -type f \( -name "*.xml" -o -name "*.yml" -o -name "*.yaml" -o -name "*.java" \
-  -o -name "*.sh" -o -name "*.md" -o -name "Makefile" -o -name "Dockerfile" \
-  -o -name ".env.example" -o -name "*.json" -o -name "*.properties" \) \
+  -o -name "*.sh" -o -name "*.bat" -o -name "*.md" -o -name "Makefile" -o -name "Dockerfile" \
+  -o -name ".env.example" -o -name "*.json" -o -name "*.properties" -o -name "*.conf" \) \
   -not -path "./.git/*" -not -path "*/target/*" \
   -exec sed -i "s/microservice-template/$SERVICE_NAME/g" {} +
 
@@ -155,7 +155,7 @@ echo "    Java files renamed."
 # ── 3. Rename Java package directory ──────────────────────────────────────────
 echo "==> [3/5] Renaming package directories..."
 
-for base in "$OLD_SERVICE/src/main/java" "$OLD_SERVICE/src/test/java"; do
+for base in "src/main/java" "src/test/java"; do
   if [ -d "$base/com/example/template" ]; then
     mkdir -p "$base/com/example/$PACKAGE_NAME"
     cp -r "$base/com/example/template/"* "$base/com/example/$PACKAGE_NAME/" 2>/dev/null || true
@@ -165,13 +165,8 @@ done
 
 echo "    Package directories renamed."
 
-# ── 4. Rename module directory ────────────────────────────────────────────────
-echo "==> [4/5] Renaming module directory..."
-
-if [ -d "$OLD_SERVICE" ]; then
-  mv "$OLD_SERVICE" "$SERVICE_NAME"
-  echo "    $OLD_SERVICE/ → $SERVICE_NAME/"
-fi
+# ── 4. (Skipped — flat structure, no module directory to rename) ─────────────
+echo "==> [4/5] Flat structure — no module rename needed."
 
 echo "    Module directory renamed."
 

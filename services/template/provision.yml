@@ -1,0 +1,29 @@
+service: microservice-template
+context-path: /template
+
+database:
+  name: template
+
+kafka:
+  topics:
+    - template-events
+    - template-events-dlq
+
+sqs:
+  queues:
+    - template-tasks
+
+s3:
+  buckets:
+    - template-documents
+
+opensearch:
+  indices:
+    - template-items
+
+keycloak:
+  realm: template
+  client: microservice-template
+  roles:
+    - TEMPLATE_USER
+    - TEMPLATE_ADMIN

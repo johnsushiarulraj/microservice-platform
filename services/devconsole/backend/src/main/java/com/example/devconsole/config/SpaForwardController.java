@@ -14,6 +14,8 @@ public class SpaForwardController {
         "/",
         "/login",
         "/create",
+        "/tutorial",
+        "/dashboard",
         "/services",
         "/data/sqs",
         "/data/s3",

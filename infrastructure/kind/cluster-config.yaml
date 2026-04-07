@@ -16,6 +16,26 @@ nodes:
       - containerPort: 443
         hostPort: 443
         protocol: TCP
+      # Gateway — the single entry point (no port-forward needed)
+      - containerPort: 30090
+        hostPort: 18090
+        protocol: TCP
+      # Prometheus (direct access — doesn't support sub-path proxy)
+      - containerPort: 30091
+        hostPort: 19090
+        protocol: TCP
+      # Keycloak (direct admin access)
+      - containerPort: 30081
+        hostPort: 18081
+        protocol: TCP
+      # PostgreSQL
+      - containerPort: 30432
+        hostPort: 15432
+        protocol: TCP
+      # Grafana (direct access fallback)
+      - containerPort: 30030
+        hostPort: 13000
+        protocol: TCP
     extraMounts:
       - hostPath: ./data/postgres
         containerPath: /data/postgres

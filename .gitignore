@@ -1,14 +1,30 @@
+# Build artifacts
 target/
 *.class
 *.jar
+build/
+dist/
+
+# IDE
 .idea/
 *.iml
-.DS_Store
-/tmp/pf-*.pid
-/tmp/pf-*.log
-node_modules/
-dist/
-build/
+.vscode/
+*.swp
 
-# Persistent data (survives cluster restarts)
+# OS
+.DS_Store
+Thumbs.db
+
+# Node
+node_modules/
+
+# Tests (live in ../microservice-platform-tests/)
+tests/
+screenshots/
+
+# Persistent data (recreated by start-infra.sh)
 data/
+
+# Port-forward logs
+/tmp/pf-*
+/tmp/cloudflared.log

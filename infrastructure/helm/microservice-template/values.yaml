@@ -14,6 +14,7 @@ ingress:
   className: nginx
   annotations:
     nginx.ingress.kubernetes.io/rewrite-target: /$2
+  contextPath: /template
   hosts:
     - host: localhost
       paths:
